@@ -100,6 +100,11 @@ module C0data
             pos += 1
           end
         end
+        # If we reached end of buffer, save the last field
+        if pos >= len && field_start <= len
+          @headers << field_start
+          @headers << pos
+        end
       end
 
       # Read records

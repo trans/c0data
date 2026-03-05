@@ -1,5 +1,5 @@
 name: c0data
-version: 0.1.0
+version: 0.2.0
 
 authors:
   - Thomas Sawyer <transfire@gmail.com>
@@ -7,3 +7,7 @@ authors:
 crystal: '>= 1.19.1'
 
 license: MIT
+
+targets:
+  c0fmt:
+    main: src/c0fmt.cr
