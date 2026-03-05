@@ -1,3 +1,4 @@
+# TODO: Add shell completion generation (Jargon supports bash/zsh/fish via --completions)
 require "jargon"
 require "./c0data"
 require "./c0data/csv"
