@@ -20,7 +20,7 @@ OptionParser.parse do |parser|
   parser.unknown_args do |args, _|
     args.each do |arg|
       case arg
-      when "pretty", "compact", "csv-import", "csv-export", "validate"
+      when "pretty", "compact", "csv-import", "csv-export", "json-export", "yaml-export", "validate"
         command = arg
       else
         input_file = arg
@@ -75,6 +75,20 @@ result = case command
                    input.to_slice
                  end
            C0data::CSV.to_csv(buf)
+         when "json-export"
+           buf = if pretty_input?(input)
+                   C0data::Pretty.parse(input)
+                 else
+                   input.to_slice
+                 end
+           C0data::JSON.to_json(buf)
+         when "yaml-export"
+           buf = if pretty_input?(input)
+                   C0data::Pretty.parse(input)
+                 else
+                   input.to_slice
+                 end
+           C0data::JSON.to_yaml(buf)
          when "validate"
            buf = if pretty_input?(input)
                    C0data::Pretty.parse(input)

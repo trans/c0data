@@ -1,5 +1,5 @@
 module C0data
-  VERSION = "0.2.0"
+  VERSION = "0.3.0"
 
   # Assigned C0 control codes
   SOH = 0x01_u8 # Header (field name declarations)
@@ -31,3 +31,4 @@ require "./c0data/builder"
 require "./c0data/pretty"
 require "./c0data/diff"
 require "./c0data/csv"
+require "./c0data/json"

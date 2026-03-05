@@ -196,6 +196,18 @@ buf = C0data::CSV.from_csv(csv_string, group_name: "users")
 csv = C0data::CSV.to_csv(buf)
 ```
 
+### JSON/YAML Export
+
+```crystal
+# C0DATA → JSON
+json = C0data::JSON.to_json(buf)
+
+# C0DATA → YAML
+yaml = C0data::JSON.to_yaml(buf)
+```
+
+Tables become arrays of objects, key-value groups become flat objects.
+
 ### C0DIFF
 
 ```crystal
@@ -235,6 +247,8 @@ Commands:
   compact      Pretty → compact
   csv-import   CSV → C0DATA
   csv-export   C0DATA → CSV
+  json-export  C0DATA → JSON
+  yaml-export  C0DATA → YAML
   validate     Check well-formedness
 
 Options:
@@ -266,6 +280,34 @@ Round-trip through C0DATA and back to CSV:
 c0fmt csv-import users.csv | c0fmt csv-export
 ```
 
+Export to JSON or YAML:
+
+```sh
+c0fmt csv-import users.csv | c0fmt json-export
+```
+
+```json
+{
+  "users": [
+    {"name": "Alice", "amount": "100"},
+    {"name": "Bob", "amount": "200"}
+  ]
+}
+```
+
+```sh
+c0fmt csv-import users.csv | c0fmt yaml-export
+```
+
+```yaml
+---
+users:
+- name: Alice
+  amount: "100"
+- name: Bob
+  amount: "200"
+```
+
 Validate a C0DATA file:
 
 ```sh
@@ -293,7 +335,7 @@ questions and future directions.
 ## Development
 
 ```
-crystal spec        # run tests (83 specs)
+crystal spec        # run tests (92 specs)
 crystal build bench/bench_tokenizer.cr -o bench/bench_tokenizer --release
 ./bench/bench_tokenizer 10   # benchmark with 10 MB document
 ```
