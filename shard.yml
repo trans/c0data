@@ -1,0 +1,9 @@
+name: c0data
+version: 0.1.0
+
+authors:
+  - Thomas Sawyer <transfire@gmail.com>
+
+crystal: '>= 1.19.1'
+
+license: MIT
