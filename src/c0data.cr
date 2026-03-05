@@ -1,5 +1,5 @@
 module C0data
-  VERSION = "0.4.0"
+  VERSION = "0.5.0"
 
   # Assigned C0 control codes
   SOH = 0x01_u8 # Header (field name declarations)
