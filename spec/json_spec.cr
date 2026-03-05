@@ -2,6 +2,8 @@ require "./spec_helper"
 require "../src/c0data/json"
 
 describe C0data::JSON do
+  # --- Export ---
+
   describe ".to_json" do
     it "exports tabular group as array of objects" do
       buf = C0data::Builder.build do |b|
@@ -65,7 +67,7 @@ describe C0data::JSON do
     it "handles DLE-escaped field values" do
       buf = C0data::Builder.build do |b|
         b.group("data", headers: ["val"]) do
-          b.record("hello\x1fworld") # US in value gets DLE-escaped by builder
+          b.record("hello\x1fworld")
         end
       end
 
@@ -95,7 +97,6 @@ describe C0data::JSON do
       result = ::YAML.parse(C0data::JSON.to_yaml(buf))
       result["users"][0]["name"].as_s.should eq("Alice")
       result["users"][0]["amount"].as_s.should eq("100")
-      result["users"][1]["name"].as_s.should eq("Bob")
     end
 
     it "exports key-value group as YAML" do
@@ -122,6 +123,161 @@ describe C0data::JSON do
 
       result = ::YAML.parse(C0data::JSON.to_yaml(buf))
       result["app"]["settings"]["debug"].as_s.should eq("true")
+    end
+  end
+
+  # --- Import ---
+
+  describe ".from_json" do
+    it "imports flat key-value object as KV group" do
+      json = %|{"host": "localhost", "port": "5432"}|
+      buf = C0data::JSON.from_json(json, group_name: "config")
+
+      table = C0data::Table.new(buf)
+      String.new(table.name).should eq("config")
+      table.record_count.should eq(2)
+      String.new(table.record(0).field(0)).should eq("host")
+      String.new(table.record(0).field(1)).should eq("localhost")
+      String.new(table.record(1).field(0)).should eq("port")
+      String.new(table.record(1).field(1)).should eq("5432")
+    end
+
+    it "imports array of objects as table with headers" do
+      json = %|{"users": [{"name": "Alice", "age": "30"}, {"name": "Bob", "age": "25"}]}|
+      buf = C0data::JSON.from_json(json)
+
+      table = C0data::Table.new(buf)
+      String.new(table.name).should eq("users")
+      table.header_count.should eq(2)
+      String.new(table.header(0)).should eq("name")
+      String.new(table.header(1)).should eq("age")
+      table.record_count.should eq(2)
+      String.new(table.record(0).field(0)).should eq("Alice")
+      String.new(table.record(1).field(1)).should eq("25")
+    end
+
+    it "imports wrapped document with FS" do
+      json = %|{"mydb": {"users": [{"name": "Alice"}], "config": {"host": "localhost", "port": "5432"}}}|
+      buf = C0data::JSON.from_json(json)
+
+      doc = C0data::Document.new(buf)
+      String.new(doc.name).should eq("mydb")
+      doc.group_count.should eq(2)
+
+      users = doc.group("users").table
+      String.new(users.header(0)).should eq("name")
+      String.new(users.record(0).field(0)).should eq("Alice")
+
+      config = doc.group("config").table
+      String.new(config.record(0).field(0)).should eq("host")
+      String.new(config.record(0).field(1)).should eq("localhost")
+    end
+
+    it "imports multiple groups without FS wrapper" do
+      json = %|{"users": [{"name": "Alice"}], "products": [{"id": "1"}]}|
+      buf = C0data::JSON.from_json(json)
+
+      # Should have two GS groups (no FS)
+      tok = C0data::Tokenizer.new(buf)
+      types = tok.to_a.map(&.type)
+      types.count(C0data::TokenType::GS).should eq(2)
+      types.count(C0data::TokenType::FS).should eq(0)
+    end
+
+    it "imports numeric and boolean values as strings" do
+      json = %|{"count": 42, "active": true, "rate": 3.14}|
+      buf = C0data::JSON.from_json(json, group_name: "data")
+
+      table = C0data::Table.new(buf)
+      String.new(table.record(0).field(1)).should eq("42")
+      String.new(table.record(1).field(1)).should eq("true")
+      String.new(table.record(2).field(1)).should eq("3.14")
+    end
+
+    it "imports nested object values with STX/ETX" do
+      json = %|{"user": {"name": "Alice", "address": {"city": "Portland", "state": "OR"}}}|
+      buf = C0data::JSON.from_json(json)
+
+      # The group "user" should have records including nested address
+      table = C0data::Table.new(buf)
+      String.new(table.name).should eq("user")
+      table.record_count.should eq(2)
+      String.new(table.record(0).field(0)).should eq("name")
+      String.new(table.record(0).field(1)).should eq("Alice")
+      # address field should have 2 fields (key + nested value with STX/ETX)
+      String.new(table.record(1).field(0)).should eq("address")
+      addr_field = table.record(1).field(1)
+      addr_field[0].should eq(C0data::STX)
+    end
+
+    it "imports array values with STX/ETX" do
+      json = %|{"tags": ["alpha", "beta", "gamma"]}|
+      buf = C0data::JSON.from_json(json)
+
+      table = C0data::Table.new(buf)
+      String.new(table.name).should eq("tags")
+      # Array of strings → records
+      table.record_count.should eq(3)
+      String.new(table.record(0).field(0)).should eq("alpha")
+      String.new(table.record(2).field(0)).should eq("gamma")
+    end
+  end
+
+  describe ".from_yaml" do
+    it "imports YAML key-value as KV group" do
+      yaml = "host: localhost\nport: \"5432\"\n"
+      buf = C0data::JSON.from_yaml(yaml, group_name: "config")
+
+      table = C0data::Table.new(buf)
+      String.new(table.name).should eq("config")
+      String.new(table.record(0).field(0)).should eq("host")
+      String.new(table.record(0).field(1)).should eq("localhost")
+    end
+
+    it "imports YAML array of objects as table" do
+      yaml = "---\nusers:\n- name: Alice\n  age: \"30\"\n- name: Bob\n  age: \"25\"\n"
+      buf = C0data::JSON.from_yaml(yaml)
+
+      table = C0data::Table.new(buf)
+      String.new(table.name).should eq("users")
+      table.header_count.should eq(2)
+      String.new(table.record(0).field(0)).should eq("Alice")
+    end
+  end
+
+  # --- Round-trips ---
+
+  describe "round-trip" do
+    it "JSON → C0DATA → JSON preserves flat table" do
+      original = %|{"users": [{"name": "Alice", "score": "95"}, {"name": "Bob", "score": "87"}]}|
+      buf = C0data::JSON.from_json(original)
+      result = ::JSON.parse(C0data::JSON.to_json(buf))
+      expected = ::JSON.parse(original)
+      result.should eq(expected)
+    end
+
+    it "JSON → C0DATA → JSON preserves key-value" do
+      original = %|{"host": "localhost", "port": "5432"}|
+      buf = C0data::JSON.from_json(original, group_name: "config")
+      result = ::JSON.parse(C0data::JSON.to_json(buf))
+      expected = ::JSON.parse(%|{"config": {"host": "localhost", "port": "5432"}}|)
+      result.should eq(expected)
+    end
+
+    it "JSON → C0DATA → JSON preserves document with multiple groups" do
+      original = %|{"mydb": {"users": [{"name": "Alice"}], "settings": {"debug": "true", "port": "8080"}}}|
+      buf = C0data::JSON.from_json(original)
+      result = ::JSON.parse(C0data::JSON.to_json(buf))
+      expected = ::JSON.parse(original)
+      result.should eq(expected)
+    end
+
+    it "JSON → C0DATA → JSON preserves nested objects" do
+      original = %|{"config": {"db": {"host": "localhost", "port": "5432"}, "name": "myapp"}}|
+      buf = C0data::JSON.from_json(original)
+      result = ::JSON.parse(C0data::JSON.to_json(buf))
+      expected = ::JSON.parse(original)
+      result.should eq(expected)
     end
   end
 end

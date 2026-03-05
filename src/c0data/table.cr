@@ -115,12 +115,26 @@ module C0data
         if byte == RS
           pos += 1
           rec_start = pos
-          # Scan to end of record
+          # Scan to end of record (skip over STX/ETX nested scopes)
           while pos < len
             b = ptr[pos]
             break if b == RS || b == GS || b == FS || b == EOT || b == ETX
             if b == DLE
               pos += 2 # skip escaped byte
+            elsif b == STX
+              # Skip nested scope
+              pos += 1
+              depth = 1
+              while pos < len && depth > 0
+                if ptr[pos] == STX
+                  depth += 1
+                elsif ptr[pos] == ETX
+                  depth -= 1
+                elsif ptr[pos] == DLE
+                  pos += 1
+                end
+                pos += 1
+              end
             else
               pos += 1
             end
@@ -145,6 +159,7 @@ module C0data
     end
 
     # Access field by index. Scans for the Nth US separator.
+    # Respects STX/ETX nesting — US inside nested scopes is not a boundary.
     def field(n : Int32) : Bytes
       pos = @start
       ptr = @buf.to_unsafe
@@ -160,6 +175,8 @@ module C0data
           field_start = pos
         elsif byte == DLE
           pos += 2
+        elsif byte == STX
+          pos = skip_nested(ptr, pos, @end)
         else
           pos += 1
         end
@@ -171,6 +188,7 @@ module C0data
     end
 
     # Number of fields in this record.
+    # Respects STX/ETX nesting — US inside nested scopes is not counted.
     def field_count : Int32
       count = 1
       pos = @start
@@ -183,11 +201,32 @@ module C0data
           pos += 1
         elsif byte == DLE
           pos += 2
+        elsif byte == STX
+          pos = skip_nested(ptr, pos, @end)
         else
           pos += 1
         end
       end
       count
+    end
+
+    # Skip over a STX/ETX nested scope, returning position after ETX.
+    @[AlwaysInline]
+    private def skip_nested(ptr : Pointer(UInt8), pos : Int32, stop : Int32) : Int32
+      pos += 1 # skip STX
+      depth = 1
+      while pos < stop && depth > 0
+        byte = ptr[pos]
+        if byte == STX
+          depth += 1
+        elsif byte == ETX
+          depth -= 1
+        elsif byte == DLE
+          pos += 1 # skip escaped byte
+        end
+        pos += 1
+      end
+      pos
     end
 
     # All fields as slices.

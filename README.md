@@ -196,9 +196,15 @@ buf = C0data::CSV.from_csv(csv_string, group_name: "users")
 csv = C0data::CSV.to_csv(buf)
 ```
 
-### JSON/YAML Export
+### JSON/YAML Conversion
 
 ```crystal
+# JSON → C0DATA
+buf = C0data::JSON.from_json(json_string)
+
+# YAML → C0DATA
+buf = C0data::JSON.from_yaml(yaml_string, group_name: "config")
+
 # C0DATA → JSON
 json = C0data::JSON.to_json(buf)
 
@@ -207,6 +213,7 @@ yaml = C0data::JSON.to_yaml(buf)
 ```
 
 Tables become arrays of objects, key-value groups become flat objects.
+Nested JSON/YAML structures are preserved using STX/ETX scoping.
 
 ### C0DIFF
 
@@ -247,7 +254,9 @@ Commands:
   compact      Pretty → compact
   csv-import   CSV → C0DATA
   csv-export   C0DATA → CSV
+  json-import  JSON → C0DATA
   json-export  C0DATA → JSON
+  yaml-import  YAML → C0DATA
   yaml-export  C0DATA → YAML
   validate     Check well-formedness
 
@@ -278,6 +287,19 @@ Round-trip through C0DATA and back to CSV:
 
 ```sh
 c0fmt csv-import users.csv | c0fmt csv-export
+```
+
+Import JSON and view as pretty C0DATA:
+
+```sh
+echo '{"users": [{"name": "Alice"}, {"name": "Bob"}]}' | c0fmt json-import | c0fmt pretty
+```
+
+```
+␝users
+  ␁name
+  ␞Alice
+  ␞Bob
 ```
 
 Export to JSON or YAML:
@@ -335,7 +357,7 @@ questions and future directions.
 ## Development
 
 ```
-crystal spec        # run tests (92 specs)
+crystal spec        # run tests (105 specs)
 crystal build bench/bench_tokenizer.cr -o bench/bench_tokenizer --release
 ./bench/bench_tokenizer 10   # benchmark with 10 MB document
 ```
