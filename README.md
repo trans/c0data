@@ -186,6 +186,16 @@ compact = C0data::Pretty.parse(pretty)
 # compact is identical to the original buf
 ```
 
+### CSV Conversion
+
+```crystal
+# CSV → C0DATA
+buf = C0data::CSV.from_csv(csv_string, group_name: "users")
+
+# C0DATA → CSV
+csv = C0data::CSV.to_csv(buf)
+```
+
 ### C0DIFF
 
 ```crystal
@@ -211,7 +221,69 @@ C0DATA has two representations:
 - **Pretty** -- human-readable. Uses Unicode Control Pictures (U+2400 block)
   for visible glyphs. Newlines and indentation are ignored by the parser.
 
-A `c0fmt` tool converts between them.
+The `c0fmt` command-line tool converts between them and more.
+
+## c0fmt
+
+`c0fmt` is a CLI tool for working with C0DATA from the command line.
+
+```
+c0fmt [command] [options] [file]
+
+Commands:
+  pretty       Compact → pretty (default)
+  compact      Pretty → compact
+  csv-import   CSV → C0DATA
+  csv-export   C0DATA → CSV
+  validate     Check well-formedness
+
+Options:
+  -o, --output FILE    Write to file (default: stdout)
+  -g, --group NAME     Group name for csv-import (default: filename stem)
+  -h, --help           Show help
+```
+
+Reads from a file argument or stdin.
+
+### Examples
+
+Convert a CSV file to pretty-printed C0DATA:
+
+```sh
+c0fmt csv-import data.csv | c0fmt pretty
+```
+
+```
+␝data
+  ␁name␟amount
+  ␞Alice␟100
+  ␞Bob␟200
+```
+
+Round-trip through C0DATA and back to CSV:
+
+```sh
+c0fmt csv-import users.csv | c0fmt csv-export
+```
+
+Validate a C0DATA file:
+
+```sh
+c0fmt validate data.c0
+```
+
+Convert between pretty and compact forms:
+
+```sh
+c0fmt compact pretty.c0 -o data.c0    # pretty → compact
+c0fmt pretty data.c0                   # compact → pretty
+```
+
+### Building c0fmt
+
+```sh
+crystal build src/c0fmt.cr -o bin/c0fmt --release
+```
 
 ## Design
 
@@ -221,7 +293,7 @@ questions and future directions.
 ## Development
 
 ```
-crystal spec        # run tests (69 specs)
+crystal spec        # run tests (83 specs)
 crystal build bench/bench_tokenizer.cr -o bench/bench_tokenizer --release
 ./bench/bench_tokenizer 10   # benchmark with 10 MB document
 ```
