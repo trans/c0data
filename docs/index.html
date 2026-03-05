@@ -668,7 +668,7 @@
 <header class="hero">
   <div class="container">
     <h1><span>C0</span>DATA</h1>
-    <p class="tagline">Structure data with ASCII control codes. One vocabulary, multiple shapes.</p>
+    <p class="tagline">Structure data with ASCII control codes.<br/>One vocabulary, multiple shapes.</p>
     <p class="sub">Between text formats and binary formats &mdash; <em>values are UTF-8, structure is single bytes</em></p>
 
     <div class="hero-buttons">
@@ -935,7 +935,6 @@
     <p class="bench-footnote">
       Benchmarks on Intel Core Ultra 7 155H, 16 GB RAM, Crystal 1.19.1 compiled with --release.
       Tokenizer benchmark on 10 MB synthetic document. Conversion benchmarks on 10,000-row table (506 KB C0DATA).
-      YAML throughput limited by Crystal's stdlib YAML builder, not C0DATA.
     </p>
   </div>
 </section>
@@ -973,9 +972,9 @@ table.record(<span class="str">0</span>).field(<span class="str">0</span>)  <spa
     <div class="install-block">
       <h4>Convert formats</h4>
 <pre><span class="dim"># Command line</span>
-c0fmt csv-import data.csv | c0fmt json-export
-c0fmt json-import config.json | c0fmt pretty
-c0fmt yaml-import settings.yml | c0fmt compact -o data.c0</pre>
+c0fmt import data.csv | c0fmt export json
+c0fmt import config.json | c0fmt pretty
+c0fmt import yaml settings.yml | c0fmt compact -o data.c0</pre>
     </div>
 
     <div class="install-block">

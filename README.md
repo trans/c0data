@@ -247,33 +247,30 @@ The `c0fmt` command-line tool converts between them and more.
 `c0fmt` is a CLI tool for working with C0DATA from the command line.
 
 ```
-c0fmt [command] [options] [file]
+c0fmt <command> [options] [file]
 
 Commands:
-  pretty       Compact → pretty (default)
-  compact      Pretty → compact
-  csv-import   CSV → C0DATA
-  csv-export   C0DATA → CSV
-  json-import  JSON → C0DATA
-  json-export  C0DATA → JSON
-  yaml-import  YAML → C0DATA
-  yaml-export  C0DATA → YAML
-  validate     Check well-formedness
+  import [format] [file]   Import CSV, JSON, or YAML to C0DATA
+  export <format> [file]   Export C0DATA to CSV, JSON, or YAML
+  pretty [file]            Convert to pretty-printed Unicode form
+  compact [file]           Convert to compact binary form
+  validate [file]          Check well-formedness
 
 Options:
   -o, --output FILE    Write to file (default: stdout)
-  -g, --group NAME     Group name for csv-import (default: filename stem)
+  -g, --group NAME     Group name for import (default: filename stem)
   -h, --help           Show help
 ```
 
-Reads from a file argument or stdin.
+Reads from a file argument or stdin. The import command auto-detects
+format from file extension (.csv, .json, .yaml, .yml) or content.
 
 ### Examples
 
 Convert a CSV file to pretty-printed C0DATA:
 
 ```sh
-c0fmt csv-import data.csv | c0fmt pretty
+c0fmt import data.csv | c0fmt pretty
 ```
 
 ```
@@ -286,13 +283,13 @@ c0fmt csv-import data.csv | c0fmt pretty
 Round-trip through C0DATA and back to CSV:
 
 ```sh
-c0fmt csv-import users.csv | c0fmt csv-export
+c0fmt import csv users.csv | c0fmt export csv
 ```
 
 Import JSON and view as pretty C0DATA:
 
 ```sh
-echo '{"users": [{"name": "Alice"}, {"name": "Bob"}]}' | c0fmt json-import | c0fmt pretty
+echo '{"users": [{"name": "Alice"}, {"name": "Bob"}]}' | c0fmt import | c0fmt pretty
 ```
 
 ```
@@ -305,7 +302,7 @@ echo '{"users": [{"name": "Alice"}, {"name": "Bob"}]}' | c0fmt json-import | c0f
 Export to JSON or YAML:
 
 ```sh
-c0fmt csv-import users.csv | c0fmt json-export
+c0fmt import users.csv | c0fmt export json
 ```
 
 ```json
@@ -318,7 +315,7 @@ c0fmt csv-import users.csv | c0fmt json-export
 ```
 
 ```sh
-c0fmt csv-import users.csv | c0fmt yaml-export
+c0fmt import users.csv | c0fmt export yaml
 ```
 
 ```yaml

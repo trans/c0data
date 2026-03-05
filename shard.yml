@@ -8,6 +8,10 @@ crystal: '>= 1.19.1'
 
 license: MIT
 
+dependencies:
+  jargon:
+    github: trans/jargon
+
 targets:
   c0fmt:
     main: src/c0fmt.cr
