@@ -153,7 +153,8 @@
   }
 
   .btn-primary:hover {
-    background: #f0b840;
+    background: var(--accent);
+    filter: brightness(1.15);
     text-decoration: none;
   }
 
@@ -398,6 +399,92 @@
   .bar-fill.dim { background: var(--text-dim); }
   .bar-fill.muted { background: #8b6cc1; }
 
+  /* ── Green theme ── */
+  body.green-theme {
+    --accent: #3fb950;
+    --accent-dim: #2ea043;
+    --accent-glow: rgba(63, 185, 80, 0.15);
+  }
+
+  /* ── Phosphor boot animation ── */
+  body.fading *,
+  body.fading *::before,
+  body.fading *::after {
+    transition: color 1.5s ease-out, background-color 1.5s ease-out,
+                border-color 1.5s ease-out, text-shadow 1.5s ease-out,
+                box-shadow 1.5s ease-out !important;
+  }
+
+  body.mono-amber {
+    --text: #d4a050;
+    --text-dim: #8a6a30;
+    --text-bright: #e3a93b;
+    --accent: #e3a93b;
+    --accent-dim: #b8860b;
+    --accent-glow: rgba(227, 169, 59, 0.15);
+    --green: #c49a40;
+    --cyan: #d4a050;
+    --red: #d4a050;
+    --border: #3d2e10;
+    --bg-raised: #141008;
+    --bg-code: #181208;
+  }
+
+  body.mono-amber .bar-fill.muted { background: #b8860b; }
+  body.mono-amber .bar-fill.cyan { background: #c49a40; }
+  body.mono-amber .bar-fill.dim { background: #8a6a30; }
+
+  body.mono-green {
+    --text: #50b060;
+    --text-dim: #306a35;
+    --text-bright: #3fb950;
+    --accent: #3fb950;
+    --accent-dim: #2ea043;
+    --accent-glow: rgba(63, 185, 80, 0.15);
+    --green: #50b060;
+    --cyan: #50b060;
+    --red: #50b060;
+    --border: #1a3d1a;
+    --bg-raised: #0a140a;
+    --bg-code: #0c180c;
+  }
+
+  body.mono-green .bar-fill.muted { background: #2ea043; }
+  body.mono-green .bar-fill.cyan { background: #50b060; }
+  body.mono-green .bar-fill.dim { background: #306a35; }
+
+  /* ── Phosphor toggle ── */
+  .phosphor-toggle {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .phos-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid;
+    transition: all 0.3s;
+  }
+
+  .phos-dot.amber {
+    border-color: #e3a93b;
+  }
+
+  .phos-dot.amber.active {
+    background: #e3a93b;
+  }
+
+  .phos-dot.green {
+    border-color: #3fb950;
+  }
+
+  .phos-dot.green.active {
+    background: #3fb950;
+  }
+
   .bar-value {
     width: 70px;
     font-size: 0.75rem;
@@ -563,6 +650,10 @@
 <nav>
   <div class="container">
     <div class="logo"><span>C0</span>DATA</div>
+    <div class="phosphor-toggle">
+      <span class="phos-dot amber active" title="Amber phosphor" onclick="setPhosphor('amber')"></span>
+      <span class="phos-dot green" title="Green phosphor" onclick="setPhosphor('green')"></span>
+    </div>
     <ul>
       <li><a href="#how">How It Works</a></li>
       <li><a href="#shapes">Shapes</a></li>
@@ -736,7 +827,7 @@
     <div class="bench-stats">
       <div>
         <div class="big-number">1,928</div>
-        <div class="big-label">MB/s tokenizer (best)</div>
+        <div class="big-label">MB/s tokenizer</div>
       </div>
       <div>
         <div class="big-number">~3x</div>
@@ -812,6 +903,11 @@
       <div class="bench-card">
         <h4>Serialize (data → format)</h4>
         <div class="bar-chart">
+          <div class="bar-row">
+            <span class="bar-label">C0DATA<sup>c</sup></span>
+            <div class="bar-track"><div class="bar-fill amber" style="width: 3%; opacity: 0.7"></div></div>
+            <span class="bar-value">0.8 ms</span>
+          </div>
           <div class="bar-row">
             <span class="bar-label">C0DATA<sup>p</sup></span>
             <div class="bar-track"><div class="bar-fill" style="width: 5%; opacity: 0.7"></div></div>
@@ -902,6 +998,51 @@ c0fmt yaml-import settings.yml | c0fmt compact -o data.c0</pre>
 </footer>
 
 <script>
+// Phosphor theme toggle
+var currentPhosphor = localStorage.getItem('c0-phosphor') || 'amber';
+
+function setPhosphor(color) {
+  currentPhosphor = color;
+  localStorage.setItem('c0-phosphor', color);
+
+  // Update dots
+  document.querySelectorAll('.phos-dot').forEach(d => d.classList.remove('active'));
+  document.querySelector('.phos-dot.' + color).classList.add('active');
+
+  // Update theme
+  if (color === 'green') {
+    document.body.classList.add('green-theme');
+  } else {
+    document.body.classList.remove('green-theme');
+  }
+}
+
+// Boot animation: start monochrome, fade to color
+(function() {
+  var mono = currentPhosphor === 'green' ? 'mono-green' : 'mono-amber';
+  document.body.classList.add(mono, 'fading');
+
+  // Apply saved theme
+  if (currentPhosphor === 'green') {
+    document.body.classList.add('green-theme');
+    document.querySelector('.phos-dot.amber').classList.remove('active');
+    document.querySelector('.phos-dot.green').classList.add('active');
+  }
+
+  // Hold monochrome briefly, then fade to full color
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      setTimeout(function() {
+        document.body.classList.remove('mono-amber', 'mono-green');
+        // Clean up fading class after transition completes
+        setTimeout(function() {
+          document.body.classList.remove('fading');
+        }, 1600);
+      }, 400);
+    });
+  });
+})();
+
 // Shapes tabs
 function showShape(id) {
   document.querySelectorAll('.shape-panel').forEach(p => p.classList.remove('active'));
