@@ -778,24 +778,132 @@ Same structure as <code>to_json</code> but outputs YAML.
 </dl>
 <hr />
 <h3 id="diff">Diff</h3>
-<p>C0DIFF: atomic multi-file edits using anchored patterns.</p>
-<div class="sourceCode" id="cb12"><pre
-class="sourceCode crystal"><code class="sourceCode crystal"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Build</span></span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>diff <span class="kw">=</span> <span class="dt">C0data</span><span class="kw">::</span><span class="dt">Diff</span><span class="at">.build</span> <span class="cf">do</span> <span class="kw">|</span>b<span class="kw">|</span></span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>  b<span class="at">.file</span>(<span class="st">&quot;src/app.cr&quot;</span>) <span class="cf">do</span></span>
-<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    b<span class="at">.section</span> <span class="cf">do</span> <span class="kw">|</span>s<span class="kw">|</span></span>
-<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>      s<span class="at">.anchor</span>(<span class="st">&quot;class App\n  def &quot;</span>)</span>
-<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>      s<span class="at">.sub</span>(<span class="st">&quot;run&quot;</span>, <span class="st">&quot;start&quot;</span>)</span>
-<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">end</span></span>
-<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>  <span class="cf">end</span></span>
-<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a><span class="cf">end</span></span>
-<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a><span class="co"># Apply to in-memory files</span></span>
-<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a>files <span class="kw">=</span> <span class="kw">{</span><span class="st">&quot;src/app.cr&quot;</span> <span class="kw">=&gt;</span> source_code<span class="kw">}</span></span>
-<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>result <span class="kw">=</span> <span class="dt">C0data</span><span class="kw">::</span><span class="dt">Diff</span><span class="at">.apply</span>(diff, files)</span>
-<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a><span class="co"># Apply to files on disk</span></span>
-<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a><span class="dt">C0data</span><span class="kw">::</span><span class="dt">Diff</span><span class="at">.apply_files</span>(diff, <span class="wa">base_dir: </span><span class="st">&quot;.&quot;</span>)</span></code></pre></div>
+<p>C0DIFF provides atomic multi-file edits using <strong>anchored
+patterns</strong>. The key idea: instead of line numbers (which shift),
+you provide literal context text as anchors surrounding the parts you
+want to change.</p>
+<h4 id="how-it-works">How it works</h4>
+<p>A section is a sequence of <strong>units</strong> separated by US.
+Each unit is either:</p>
+<ul>
+<li><strong>Anchor text</strong> – literal content that must match
+exactly (provides context)</li>
+<li><strong>Substitution</strong> – <code>old[SUB]new</code> (the part
+that actually changes)</li>
+</ul>
+<p>Units are concatenated to build a search pattern. The pattern must
+match <strong>exactly once</strong> in the file. Then only the
+SUB-marked parts are replaced.</p>
+<p><strong>Example:</strong> Given a file <code>greeting.txt</code>
+containing <code>Hello world!</code></p>
+<pre><code>[FS]greeting.txt
+[GS]Hello [US]world[SUB]universe[US]!</code></pre>
+<p>This breaks down as:</p>
+<table>
+<thead>
+<tr>
+<th>Unit</th>
+<th>Type</th>
+<th>Search contributes</th>
+<th>Replacement contributes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Hello</code></td>
+<td>anchor</td>
+<td><code>Hello</code></td>
+<td><code>Hello</code></td>
+</tr>
+<tr>
+<td><code>world[SUB]universe</code></td>
+<td>substitution</td>
+<td><code>world</code></td>
+<td><code>universe</code></td>
+</tr>
+<tr>
+<td><code>!</code></td>
+<td>anchor</td>
+<td><code>!</code></td>
+<td><code>!</code></td>
+</tr>
+</tbody>
+</table>
+<p>Search pattern: <code>Hello world!</code> (must match exactly once).
+Replacement: <code>Hello universe!</code> (only <code>world</code> →
+<code>universe</code> changes).</p>
+<p>The anchors before <strong>and</strong> after the substitution are
+what make the match precise. You can use as many or as few anchors as
+needed to ensure a unique match.</p>
+<h4
+id="anchors-on-one-side-both-sides-or-multiple-substitutions">Anchors on
+one side, both sides, or multiple substitutions</h4>
+<div class="sourceCode" id="cb13"><pre
+class="sourceCode crystal"><code class="sourceCode crystal"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Anchor before only (enough if &quot;def run&quot; is unique in context)</span></span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>b<span class="at">.section</span> <span class="cf">do</span> <span class="kw">|</span>s<span class="kw">|</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>  s<span class="at">.anchor</span>(<span class="st">&quot;class App\n  def &quot;</span>)</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>  s<span class="at">.sub</span>(<span class="st">&quot;run&quot;</span>, <span class="st">&quot;start&quot;</span>)</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a><span class="cf">end</span></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a><span class="co"># Anchors before and after (more precise)</span></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>b<span class="at">.section</span> <span class="cf">do</span> <span class="kw">|</span>s<span class="kw">|</span></span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>  s<span class="at">.anchor</span>(<span class="st">&quot;Hello &quot;</span>)</span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>  s<span class="at">.sub</span>(<span class="st">&quot;world&quot;</span>, <span class="st">&quot;universe&quot;</span>)</span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>  s<span class="at">.anchor</span>(<span class="st">&quot;!&quot;</span>)</span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a><span class="cf">end</span></span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a><span class="co"># Multiple substitutions in one section</span></span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a>b<span class="at">.section</span> <span class="cf">do</span> <span class="kw">|</span>s<span class="kw">|</span></span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a>  s<span class="at">.anchor</span>(<span class="st">&quot;x = &quot;</span>)</span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a>  s<span class="at">.sub</span>(<span class="st">&quot;10&quot;</span>, <span class="st">&quot;20&quot;</span>)</span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a>  s<span class="at">.anchor</span>(<span class="st">&quot; + &quot;</span>)</span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a>  s<span class="at">.sub</span>(<span class="st">&quot;5&quot;</span>, <span class="st">&quot;15&quot;</span>)</span>
+<span id="cb13-20"><a href="#cb13-20" aria-hidden="true" tabindex="-1"></a><span class="cf">end</span></span>
+<span id="cb13-21"><a href="#cb13-21" aria-hidden="true" tabindex="-1"></a><span class="co"># Finds &quot;x = 10 + 5&quot;, produces &quot;x = 20 + 15&quot;</span></span></code></pre></div>
+<h4 id="atomicity-guarantee">Atomicity guarantee</h4>
+<p>When applying a diff (whether in-memory or on disk):</p>
+<ol type="1">
+<li><strong>Validate first</strong> – every section’s search pattern is
+checked against every target file. Each pattern must match
+<strong>exactly once</strong>. Zero matches → error. Multiple matches →
+error.</li>
+<li><strong>Apply only if all pass</strong> – if any pattern in any file
+fails validation, <strong>nothing is modified</strong>. No partial
+writes, no half-applied diffs.</li>
+<li><strong>Then write</strong> – all replacements are applied and files
+are written.</li>
+</ol>
+<p>This means a C0DIFF document is an all-or-nothing transaction across
+multiple files.</p>
+<h4 id="building-and-applying">Building and applying</h4>
+<div class="sourceCode" id="cb14"><pre
+class="sourceCode crystal"><code class="sourceCode crystal"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Build a diff</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>diff <span class="kw">=</span> <span class="dt">C0data</span><span class="kw">::</span><span class="dt">Diff</span><span class="at">.build</span> <span class="cf">do</span> <span class="kw">|</span>b<span class="kw">|</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  b<span class="at">.file</span>(<span class="st">&quot;src/app.cr&quot;</span>) <span class="cf">do</span></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Full control with section builder</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>    b<span class="at">.section</span> <span class="cf">do</span> <span class="kw">|</span>s<span class="kw">|</span></span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>      s<span class="at">.anchor</span>(<span class="st">&quot;class App\n  def &quot;</span>)</span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>      s<span class="at">.sub</span>(<span class="st">&quot;run&quot;</span>, <span class="st">&quot;start&quot;</span>)</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>      s<span class="at">.anchor</span>(<span class="st">&quot;\n&quot;</span>)</span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">end</span></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>  <span class="cf">end</span></span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>  b<span class="at">.file</span>(<span class="st">&quot;src/config.cr&quot;</span>) <span class="cf">do</span></span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Shorthand for simple replacements</span></span>
+<span id="cb14-14"><a href="#cb14-14" aria-hidden="true" tabindex="-1"></a>    b<span class="at">.replace</span>(<span class="st">&quot;host = \&quot;&quot;</span>, <span class="st">&quot;localhost&quot;</span>, <span class="st">&quot;0.0.0.0&quot;</span>, <span class="st">&quot;\&quot;&quot;</span>)</span>
+<span id="cb14-15"><a href="#cb14-15" aria-hidden="true" tabindex="-1"></a>  <span class="cf">end</span></span>
+<span id="cb14-16"><a href="#cb14-16" aria-hidden="true" tabindex="-1"></a><span class="cf">end</span></span>
+<span id="cb14-17"><a href="#cb14-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-18"><a href="#cb14-18" aria-hidden="true" tabindex="-1"></a><span class="co"># Apply to in-memory file contents</span></span>
+<span id="cb14-19"><a href="#cb14-19" aria-hidden="true" tabindex="-1"></a>files <span class="kw">=</span> <span class="kw">{</span></span>
+<span id="cb14-20"><a href="#cb14-20" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;src/app.cr&quot;</span> <span class="kw">=&gt;</span> app_source,</span>
+<span id="cb14-21"><a href="#cb14-21" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;src/config.cr&quot;</span> <span class="kw">=&gt;</span> config_source,</span>
+<span id="cb14-22"><a href="#cb14-22" aria-hidden="true" tabindex="-1"></a><span class="kw">}</span></span>
+<span id="cb14-23"><a href="#cb14-23" aria-hidden="true" tabindex="-1"></a>result <span class="kw">=</span> <span class="dt">C0data</span><span class="kw">::</span><span class="dt">Diff</span><span class="at">.apply</span>(diff, files)</span>
+<span id="cb14-24"><a href="#cb14-24" aria-hidden="true" tabindex="-1"></a><span class="co"># =&gt; Hash with modified contents (unmodified files included too)</span></span>
+<span id="cb14-25"><a href="#cb14-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-26"><a href="#cb14-26" aria-hidden="true" tabindex="-1"></a><span class="co"># Or apply directly to files on disk</span></span>
+<span id="cb14-27"><a href="#cb14-27" aria-hidden="true" tabindex="-1"></a><span class="dt">C0data</span><span class="kw">::</span><span class="dt">Diff</span><span class="at">.apply_files</span>(diff, <span class="wa">base_dir: </span><span class="st">&quot;.&quot;</span>)</span></code></pre></div>
 <h4 id="module-methods">Module Methods</h4>
 <dl>
 <dt><strong><code>Diff.build(&amp; : DiffBuilder -&gt;) : Bytes</code></strong></dt>
@@ -808,38 +916,45 @@ Parse a C0DIFF buffer into file edits.
 </dd>
 <dt><strong><code>Diff.apply(diff_buf : Bytes, files : Hash(String, String)) : Hash(String, String)</code></strong></dt>
 <dd>
-Apply diff to a hash of file contents. Atomic: validates all patterns
-match before modifying any file.
+Apply diff to in-memory file contents. Validates all patterns across all
+files first. Raises <code>C0data::Error</code> if any pattern matches
+zero or more than one time. Returns the full file hash (modified +
+unmodified files).
 </dd>
 <dt><strong><code>Diff.apply_files(diff_buf : Bytes, base_dir : String = ".")</code></strong></dt>
 <dd>
-Apply diff to files on disk. Atomic: validates all before writing.
+Apply diff to files on disk. Same validation guarantees. Raises
+<code>C0data::Error</code> if any file is missing or any pattern fails.
 </dd>
 </dl>
 <h4 id="diffbuilder">DiffBuilder</h4>
 <dl>
 <dt><strong><code>file(path : String, &amp;)</code></strong></dt>
 <dd>
-Add a file edit block.
+Start a file edit block.
 </dd>
 <dt><strong><code>section(&amp; : SectionBuilder -&gt;)</code></strong></dt>
 <dd>
-Add a pattern section.
+Add a pattern section with full control over anchors and substitutions.
 </dd>
 <dt><strong><code>replace(context_before, old_text, new_text, context_after = "")</code></strong></dt>
 <dd>
-Convenience: add a simple find/replace.
+Shorthand for a section with one substitution. Equivalent to:
+<code>anchor(context_before) + sub(old_text, new_text) + anchor(context_after)</code>.
 </dd>
 </dl>
 <h4 id="sectionbuilder">SectionBuilder</h4>
 <dl>
 <dt><strong><code>anchor(text : String)</code></strong></dt>
 <dd>
-Add literal anchor text.
+Add literal anchor text. Anchors appear in both the search pattern and
+the replacement unchanged. They provide the context that ensures a
+unique match.
 </dd>
 <dt><strong><code>sub(old_text : String, new_text : String)</code></strong></dt>
 <dd>
-Add a substitution.
+Add a substitution. <code>old_text</code> appears in the search pattern,
+<code>new_text</code> appears in the replacement.
 </dd>
 </dl>
 <h4 id="data-types">Data Types</h4>
@@ -849,8 +964,9 @@ Add a substitution.
 <dt><strong><code>Section</code></strong> –
 <code>units : Array(Unit)</code></dt>
 <dd>
-<code>search_pattern : Bytes</code> – concatenated old text.
-<code>replacement : Bytes</code> – concatenated new text.
+<code>search_pattern : Bytes</code> – all units concatenated using old
+text. <code>replacement : Bytes</code> – all units concatenated using
+new text.
 </dd>
 </dl>
 <p><strong><code>Sub</code></strong> – <code>old : Bytes</code>,
@@ -861,8 +977,8 @@ Add a substitution.
 <h2 id="c0fmt-cli">c0fmt CLI</h2>
 <p>Command-line tool for converting and inspecting C0DATA.</p>
 <h3 id="build">Build</h3>
-<div class="sourceCode" id="cb13"><pre
-class="sourceCode sh"><code class="sourceCode bash"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="ex">crystal</span> build src/c0fmt.cr <span class="at">-o</span> bin/c0fmt <span class="at">--release</span></span></code></pre></div>
+<div class="sourceCode" id="cb15"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ex">crystal</span> build src/c0fmt.cr <span class="at">-o</span> bin/c0fmt <span class="at">--release</span></span></code></pre></div>
 <h3 id="commands">Commands</h3>
 <h4 id="import">import</h4>
 <pre><code>c0fmt import [format] [file]</code></pre>
@@ -878,12 +994,12 @@ stdout.</li>
 <li><strong>-g NAME</strong> – group name (defaults to filename stem or
 <code>data</code>).</li>
 </ul>
-<div class="sourceCode" id="cb15"><pre
-class="sourceCode sh"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import data.csv                      <span class="co"># auto-detect from extension</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import csv data.csv                  <span class="co"># explicit format</span></span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&#39;{&quot;a&quot;:1}&#39;</span> <span class="kw">|</span> <span class="ex">c0fmt</span> import              <span class="co"># sniff stdin (detects JSON)</span></span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> data.csv <span class="kw">|</span> <span class="ex">c0fmt</span> import csv            <span class="co"># explicit format, stdin</span></span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import data.json <span class="at">-g</span> mydata           <span class="co"># custom group name</span></span></code></pre></div>
+<div class="sourceCode" id="cb17"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import data.csv                      <span class="co"># auto-detect from extension</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import csv data.csv                  <span class="co"># explicit format</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="bu">echo</span> <span class="st">&#39;{&quot;a&quot;:1}&#39;</span> <span class="kw">|</span> <span class="ex">c0fmt</span> import              <span class="co"># sniff stdin (detects JSON)</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> data.csv <span class="kw">|</span> <span class="ex">c0fmt</span> import csv            <span class="co"># explicit format, stdin</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import data.json <span class="at">-g</span> mydata           <span class="co"># custom group name</span></span></code></pre></div>
 <h4 id="export">export</h4>
 <pre><code>c0fmt export &lt;format&gt; [file]</code></pre>
 <p>Export C0DATA to CSV, JSON, or YAML.</p>
@@ -894,10 +1010,10 @@ class="sourceCode sh"><code class="sourceCode bash"><span id="cb15-1"><a href="#
 omitted.</li>
 <li><strong>-o FILE</strong> – write output to file.</li>
 </ul>
-<div class="sourceCode" id="cb17"><pre
-class="sourceCode sh"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import data.csv <span class="kw">|</span> <span class="ex">c0fmt</span> export json</span>
-<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> export yaml data.c0</span>
-<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> export csv data.c0 <span class="at">-o</span> data.csv</span></code></pre></div>
+<div class="sourceCode" id="cb19"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import data.csv <span class="kw">|</span> <span class="ex">c0fmt</span> export json</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> export yaml data.c0</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> export csv data.c0 <span class="at">-o</span> data.csv</span></code></pre></div>
 <h4 id="pretty-1">pretty</h4>
 <pre><code>c0fmt pretty [file]</code></pre>
 <p>Convert C0DATA to pretty-printed Unicode form. Auto-detects whether
@@ -905,37 +1021,37 @@ input is already pretty or compact.</p>
 <ul>
 <li><strong>-o FILE</strong> – write output to file.</li>
 </ul>
-<div class="sourceCode" id="cb19"><pre
-class="sourceCode sh"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> pretty data.c0</span>
-<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> data.c0 <span class="kw">|</span> <span class="ex">c0fmt</span> pretty</span></code></pre></div>
+<div class="sourceCode" id="cb21"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> pretty data.c0</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="fu">cat</span> data.c0 <span class="kw">|</span> <span class="ex">c0fmt</span> pretty</span></code></pre></div>
 <h4 id="compact">compact</h4>
 <pre><code>c0fmt compact [file]</code></pre>
 <p>Convert C0DATA to compact binary form.</p>
 <ul>
 <li><strong>-o FILE</strong> – write output to file.</li>
 </ul>
-<div class="sourceCode" id="cb21"><pre
-class="sourceCode sh"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> compact pretty.c0 <span class="at">-o</span> data.c0</span></code></pre></div>
+<div class="sourceCode" id="cb23"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> compact pretty.c0 <span class="at">-o</span> data.c0</span></code></pre></div>
 <h4 id="validate">validate</h4>
 <pre><code>c0fmt validate [file]</code></pre>
 <p>Check well-formedness of a C0DATA document. Prints <code>valid</code>
 to stderr and exits 0, or prints the error and exits 1.</p>
-<div class="sourceCode" id="cb23"><pre
-class="sourceCode sh"><code class="sourceCode bash"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> validate data.c0</span></code></pre></div>
+<div class="sourceCode" id="cb25"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> validate data.c0</span></code></pre></div>
 <h3 id="pipelines">Pipelines</h3>
 <p>Commands compose via stdin/stdout:</p>
-<div class="sourceCode" id="cb24"><pre
-class="sourceCode sh"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># CSV to JSON</span></span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import data.csv <span class="kw">|</span> <span class="ex">c0fmt</span> export json</span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a><span class="co"># JSON to pretty C0DATA</span></span>
-<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import config.json <span class="kw">|</span> <span class="ex">c0fmt</span> pretty</span>
-<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a><span class="co"># YAML to compact C0DATA file</span></span>
-<span id="cb24-8"><a href="#cb24-8" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import settings.yml <span class="kw">|</span> <span class="ex">c0fmt</span> compact <span class="at">-o</span> data.c0</span>
-<span id="cb24-9"><a href="#cb24-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb24-10"><a href="#cb24-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Round-trip: CSV → C0DATA → CSV</span></span>
-<span id="cb24-11"><a href="#cb24-11" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import csv users.csv <span class="kw">|</span> <span class="ex">c0fmt</span> export csv</span></code></pre></div>
+<div class="sourceCode" id="cb26"><pre
+class="sourceCode sh"><code class="sourceCode bash"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="co"># CSV to JSON</span></span>
+<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import data.csv <span class="kw">|</span> <span class="ex">c0fmt</span> export json</span>
+<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a><span class="co"># JSON to pretty C0DATA</span></span>
+<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import config.json <span class="kw">|</span> <span class="ex">c0fmt</span> pretty</span>
+<span id="cb26-6"><a href="#cb26-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-7"><a href="#cb26-7" aria-hidden="true" tabindex="-1"></a><span class="co"># YAML to compact C0DATA file</span></span>
+<span id="cb26-8"><a href="#cb26-8" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import settings.yml <span class="kw">|</span> <span class="ex">c0fmt</span> compact <span class="at">-o</span> data.c0</span>
+<span id="cb26-9"><a href="#cb26-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb26-10"><a href="#cb26-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Round-trip: CSV → C0DATA → CSV</span></span>
+<span id="cb26-11"><a href="#cb26-11" aria-hidden="true" tabindex="-1"></a><span class="ex">c0fmt</span> import csv users.csv <span class="kw">|</span> <span class="ex">c0fmt</span> export csv</span></code></pre></div>
 <hr />
 <h2 id="data-shape-mapping">Data Shape Mapping</h2>
 <p>How C0DATA maps to and from JSON/YAML/CSV.</p>
@@ -944,8 +1060,8 @@ class="sourceCode sh"><code class="sourceCode bash"><span id="cb24-1"><a href="#
   ␁name␟amount
   ␞Alice␟100
   ␞Bob␟200</code></pre>
-<div class="sourceCode" id="cb26"><pre
-class="sourceCode json"><code class="sourceCode json"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">&quot;users&quot;</span><span class="fu">:</span> <span class="ot">[</span><span class="fu">{</span><span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;Alice&quot;</span><span class="fu">,</span> <span class="dt">&quot;amount&quot;</span><span class="fu">:</span> <span class="st">&quot;100&quot;</span><span class="fu">}</span><span class="ot">,</span> <span class="fu">{</span><span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;Bob&quot;</span><span class="fu">,</span> <span class="dt">&quot;amount&quot;</span><span class="fu">:</span> <span class="st">&quot;200&quot;</span><span class="fu">}</span><span class="ot">]</span><span class="fu">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb28"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">&quot;users&quot;</span><span class="fu">:</span> <span class="ot">[</span><span class="fu">{</span><span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;Alice&quot;</span><span class="fu">,</span> <span class="dt">&quot;amount&quot;</span><span class="fu">:</span> <span class="st">&quot;100&quot;</span><span class="fu">}</span><span class="ot">,</span> <span class="fu">{</span><span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;Bob&quot;</span><span class="fu">,</span> <span class="dt">&quot;amount&quot;</span><span class="fu">:</span> <span class="st">&quot;200&quot;</span><span class="fu">}</span><span class="ot">]</span><span class="fu">}</span></span></code></pre></div>
 <pre class="csv"><code>name,amount
 Alice,100
 Bob,200</code></pre>
@@ -954,21 +1070,21 @@ Bob,200</code></pre>
 <pre><code>␝database
   ␞host␟localhost
   ␞port␟5432</code></pre>
-<div class="sourceCode" id="cb29"><pre
-class="sourceCode json"><code class="sourceCode json"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">&quot;database&quot;</span><span class="fu">:</span> <span class="fu">{</span><span class="dt">&quot;host&quot;</span><span class="fu">:</span> <span class="st">&quot;localhost&quot;</span><span class="fu">,</span> <span class="dt">&quot;port&quot;</span><span class="fu">:</span> <span class="st">&quot;5432&quot;</span><span class="fu">}}</span></span></code></pre></div>
+<div class="sourceCode" id="cb31"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">&quot;database&quot;</span><span class="fu">:</span> <span class="fu">{</span><span class="dt">&quot;host&quot;</span><span class="fu">:</span> <span class="st">&quot;localhost&quot;</span><span class="fu">,</span> <span class="dt">&quot;port&quot;</span><span class="fu">:</span> <span class="st">&quot;5432&quot;</span><span class="fu">}}</span></span></code></pre></div>
 <h3 id="multi-field-records-no-header-n-fields">Multi-field records (no
 header, N fields)</h3>
 <pre><code>␝data
   ␞a␟b␟c
   ␞d␟e␟f</code></pre>
-<div class="sourceCode" id="cb31"><pre
-class="sourceCode json"><code class="sourceCode json"><span id="cb31-1"><a href="#cb31-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">&quot;data&quot;</span><span class="fu">:</span> <span class="ot">[[</span><span class="st">&quot;a&quot;</span><span class="ot">,</span> <span class="st">&quot;b&quot;</span><span class="ot">,</span> <span class="st">&quot;c&quot;</span><span class="ot">],</span> <span class="ot">[</span><span class="st">&quot;d&quot;</span><span class="ot">,</span> <span class="st">&quot;e&quot;</span><span class="ot">,</span> <span class="st">&quot;f&quot;</span><span class="ot">]]</span><span class="fu">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb33"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">&quot;data&quot;</span><span class="fu">:</span> <span class="ot">[[</span><span class="st">&quot;a&quot;</span><span class="ot">,</span> <span class="st">&quot;b&quot;</span><span class="ot">,</span> <span class="st">&quot;c&quot;</span><span class="ot">],</span> <span class="ot">[</span><span class="st">&quot;d&quot;</span><span class="ot">,</span> <span class="st">&quot;e&quot;</span><span class="ot">,</span> <span class="st">&quot;f&quot;</span><span class="ot">]]</span><span class="fu">}</span></span></code></pre></div>
 <h3 id="nested-values-stxetx">Nested values (STX/ETX)</h3>
 <pre><code>␝users
   ␁name␟address
   ␞Alice␟␂␁street␟city␞123 Main␟Springfield␃</code></pre>
-<div class="sourceCode" id="cb33"><pre
-class="sourceCode json"><code class="sourceCode json"><span id="cb33-1"><a href="#cb33-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">&quot;users&quot;</span><span class="fu">:</span> <span class="ot">[</span><span class="fu">{</span><span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;Alice&quot;</span><span class="fu">,</span> <span class="dt">&quot;address&quot;</span><span class="fu">:</span> <span class="fu">{</span><span class="dt">&quot;street&quot;</span><span class="fu">:</span> <span class="st">&quot;123 Main&quot;</span><span class="fu">,</span> <span class="dt">&quot;city&quot;</span><span class="fu">:</span> <span class="st">&quot;Springfield&quot;</span><span class="fu">}}</span><span class="ot">]</span><span class="fu">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb35"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">&quot;users&quot;</span><span class="fu">:</span> <span class="ot">[</span><span class="fu">{</span><span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;Alice&quot;</span><span class="fu">,</span> <span class="dt">&quot;address&quot;</span><span class="fu">:</span> <span class="fu">{</span><span class="dt">&quot;street&quot;</span><span class="fu">:</span> <span class="st">&quot;123 Main&quot;</span><span class="fu">,</span> <span class="dt">&quot;city&quot;</span><span class="fu">:</span> <span class="st">&quot;Springfield&quot;</span><span class="fu">}}</span><span class="ot">]</span><span class="fu">}</span></span></code></pre></div>
 <h3 id="document-fs-wrapper">Document (FS wrapper)</h3>
 <pre><code>␜mydb
   ␝users
@@ -977,7 +1093,7 @@ class="sourceCode json"><code class="sourceCode json"><span id="cb33-1"><a href=
   ␝products
     ␁id
     ␞01</code></pre>
-<div class="sourceCode" id="cb35"><pre
-class="sourceCode json"><code class="sourceCode json"><span id="cb35-1"><a href="#cb35-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">&quot;mydb&quot;</span><span class="fu">:</span> <span class="fu">{</span><span class="dt">&quot;users&quot;</span><span class="fu">:</span> <span class="ot">[</span><span class="fu">{</span><span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;Alice&quot;</span><span class="fu">}</span><span class="ot">]</span><span class="fu">,</span> <span class="dt">&quot;products&quot;</span><span class="fu">:</span> <span class="ot">[</span><span class="fu">{</span><span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="st">&quot;01&quot;</span><span class="fu">}</span><span class="ot">]</span><span class="fu">}}</span></span></code></pre></div>
+<div class="sourceCode" id="cb37"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb37-1"><a href="#cb37-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span><span class="dt">&quot;mydb&quot;</span><span class="fu">:</span> <span class="fu">{</span><span class="dt">&quot;users&quot;</span><span class="fu">:</span> <span class="ot">[</span><span class="fu">{</span><span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;Alice&quot;</span><span class="fu">}</span><span class="ot">]</span><span class="fu">,</span> <span class="dt">&quot;products&quot;</span><span class="fu">:</span> <span class="ot">[</span><span class="fu">{</span><span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="st">&quot;01&quot;</span><span class="fu">}</span><span class="ot">]</span><span class="fu">}}</span></span></code></pre></div>
 </body>
 </html>

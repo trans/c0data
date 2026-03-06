@@ -399,24 +399,111 @@ Intermediate recursive type used during conversion.
 
 ### Diff
 
-C0DIFF: atomic multi-file edits using anchored patterns.
+C0DIFF provides atomic multi-file edits using **anchored patterns**.
+The key idea: instead of line numbers (which shift), you provide
+literal context text as anchors surrounding the parts you want to change.
+
+#### How it works
+
+A section is a sequence of **units** separated by US. Each unit is either:
+
+- **Anchor text** -- literal content that must match exactly (provides context)
+- **Substitution** -- `old[SUB]new` (the part that actually changes)
+
+Units are concatenated to build a search pattern. The pattern must match
+**exactly once** in the file. Then only the SUB-marked parts are replaced.
+
+**Example:** Given a file `greeting.txt` containing `Hello world!`
+
+```
+[FS]greeting.txt
+[GS]Hello [US]world[SUB]universe[US]!
+```
+
+This breaks down as:
+
+| Unit | Type | Search contributes | Replacement contributes |
+|------|------|-------------------|------------------------|
+| `Hello ` | anchor | `Hello ` | `Hello ` |
+| `world[SUB]universe` | substitution | `world` | `universe` |
+| `!` | anchor | `!` | `!` |
+
+Search pattern: `Hello world!` (must match exactly once).
+Replacement: `Hello universe!` (only `world` → `universe` changes).
+
+The anchors before **and** after the substitution are what make the match
+precise. You can use as many or as few anchors as needed to ensure a
+unique match.
+
+#### Anchors on one side, both sides, or multiple substitutions
 
 ```crystal
-# Build
+# Anchor before only (enough if "def run" is unique in context)
+b.section do |s|
+  s.anchor("class App\n  def ")
+  s.sub("run", "start")
+end
+
+# Anchors before and after (more precise)
+b.section do |s|
+  s.anchor("Hello ")
+  s.sub("world", "universe")
+  s.anchor("!")
+end
+
+# Multiple substitutions in one section
+b.section do |s|
+  s.anchor("x = ")
+  s.sub("10", "20")
+  s.anchor(" + ")
+  s.sub("5", "15")
+end
+# Finds "x = 10 + 5", produces "x = 20 + 15"
+```
+
+#### Atomicity guarantee
+
+When applying a diff (whether in-memory or on disk):
+
+1. **Validate first** -- every section's search pattern is checked against
+   every target file. Each pattern must match **exactly once**. Zero
+   matches → error. Multiple matches → error.
+2. **Apply only if all pass** -- if any pattern in any file fails validation,
+   **nothing is modified**. No partial writes, no half-applied diffs.
+3. **Then write** -- all replacements are applied and files are written.
+
+This means a C0DIFF document is an all-or-nothing transaction across
+multiple files.
+
+#### Building and applying
+
+```crystal
+# Build a diff
 diff = C0data::Diff.build do |b|
   b.file("src/app.cr") do
+    # Full control with section builder
     b.section do |s|
       s.anchor("class App\n  def ")
       s.sub("run", "start")
+      s.anchor("\n")
     end
+  end
+
+  b.file("src/config.cr") do
+    # Shorthand for simple replacements
+    b.replace("host = \"", "localhost", "0.0.0.0", "\"")
   end
 end
 
-# Apply to in-memory files
-files = {"src/app.cr" => source_code}
+# Apply to in-memory file contents
+files = {
+  "src/app.cr" => app_source,
+  "src/config.cr" => config_source,
+}
 result = C0data::Diff.apply(diff, files)
+# => Hash with modified contents (unmodified files included too)
 
-# Apply to files on disk
+# Or apply directly to files on disk
 C0data::Diff.apply_files(diff, base_dir: ".")
 ```
 
@@ -429,38 +516,45 @@ C0data::Diff.apply_files(diff, base_dir: ".")
 :   Parse a C0DIFF buffer into file edits.
 
 **`Diff.apply(diff_buf : Bytes, files : Hash(String, String)) : Hash(String, String)`**
-:   Apply diff to a hash of file contents. Atomic: validates all patterns
-    match before modifying any file.
+:   Apply diff to in-memory file contents. Validates all patterns across
+    all files first. Raises `C0data::Error` if any pattern matches zero
+    or more than one time. Returns the full file hash (modified +
+    unmodified files).
 
 **`Diff.apply_files(diff_buf : Bytes, base_dir : String = ".")`**
-:   Apply diff to files on disk. Atomic: validates all before writing.
+:   Apply diff to files on disk. Same validation guarantees. Raises
+    `C0data::Error` if any file is missing or any pattern fails.
 
 #### DiffBuilder
 
 **`file(path : String, &)`**
-:   Add a file edit block.
+:   Start a file edit block.
 
 **`section(& : SectionBuilder ->)`**
-:   Add a pattern section.
+:   Add a pattern section with full control over anchors and substitutions.
 
 **`replace(context_before, old_text, new_text, context_after = "")`**
-:   Convenience: add a simple find/replace.
+:   Shorthand for a section with one substitution. Equivalent to:
+    `anchor(context_before) + sub(old_text, new_text) + anchor(context_after)`.
 
 #### SectionBuilder
 
 **`anchor(text : String)`**
-:   Add literal anchor text.
+:   Add literal anchor text. Anchors appear in both the search pattern and
+    the replacement unchanged. They provide the context that ensures a
+    unique match.
 
 **`sub(old_text : String, new_text : String)`**
-:   Add a substitution.
+:   Add a substitution. `old_text` appears in the search pattern,
+    `new_text` appears in the replacement.
 
 #### Data Types
 
 **`FileEdit`** -- `path : Bytes`, `sections : Array(Section)`
 
 **`Section`** -- `units : Array(Unit)`
-:   `search_pattern : Bytes` -- concatenated old text.
-    `replacement : Bytes` -- concatenated new text.
+:   `search_pattern : Bytes` -- all units concatenated using old text.
+    `replacement : Bytes` -- all units concatenated using new text.
 
 **`Sub`** -- `old : Bytes`, `new : Bytes`
 
