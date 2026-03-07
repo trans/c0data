@@ -1,5 +1,5 @@
 module C0
-  VERSION = "0.6.0"
+  VERSION = "0.7.0"
 
   # Assigned C0 control codes
   SOH = 0x01_u8 # Header (field name declarations)
@@ -32,3 +32,5 @@ require "./c0/pretty"
 require "./c0/diff"
 require "./c0/csv"
 require "./c0/json"
+require "./c0/serializable"
+require "./c0/core_ext"
