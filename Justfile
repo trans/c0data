@@ -22,7 +22,7 @@ docs-tech:
 
 # Generate Crystal API docs
 docs-api:
-    crystal doc -o docs/api/crystal
+    crystal doc -o docs/api
 
 # Run tokenizer benchmark (default 10 MB)
 bench-tokenizer size="10":

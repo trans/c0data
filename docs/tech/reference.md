@@ -7,14 +7,12 @@ title: C0DATA Technical Reference
 ## Format Overview
 
 C0DATA uses ASCII C0 control codes (0x00--0x1F) as structural delimiters
-with UTF-8 text values. It has two representations:
-
-- **Compact** -- canonical wire/storage form. Every byte is literal.
-- **Pretty** -- human-readable. Uses Unicode Control Pictures (U+2400 block).
-  Whitespace adjacent to control codes is trimmed.
+with UTF-8 text values. It sits between human-readable text formats (JSON,
+YAML, TOML) and opaque binary formats (protobuf, msgpack). Values are plain
+text. Structure is expressed through single-byte control codes.
 
 See [DESIGN.md](https://github.com/trans/c0data/blob/main/DESIGN.md) for the
-full specification.
+full specification and future directions.
 
 ### Assigned Control Codes
 
@@ -32,378 +30,188 @@ full specification.
 | 0x1E | RS  | ␞ | Record / Row separator |
 | 0x1F | US  | ␟ | Unit / Field separator |
 
+All other C0 codes (0x00--0x1F) are currently **reserved**. A parser should
+raise an error on unassigned codes.
+
 ### Structural Hierarchy
+
+The four separator codes form a fixed hierarchy:
 
 ```
 FS  >  GS  >  RS  >  US
 file   group  record  field
 ```
 
+- **FS (0x1C)** -- Top-level container. A database, a file, a document.
+- **GS (0x1D)** -- A group within a file. A table, a collection, a section.
+- **RS (0x1E)** -- A record within a group. A row, an entry, a block.
+- **US (0x1F)** -- A unit within a record. A field, a property, an element.
+
 Text immediately following FS or GS is the **label** (name) for that scope.
 
 
 ---
 
-## Crystal API
+## Two Forms: Compact and Pretty
 
-### Installation
+C0DATA has two representations of the same data.
 
-Add to your `shard.yml`:
+### Compact Form (Canonical)
 
-```yaml
-dependencies:
-  c0data:
-    github: trans/c0data
+The wire/storage format. A continuous byte stream. Every byte between control
+codes is literal data -- including LF, CR, HT, and spaces. No whitespace is
+ignored. This is the canonical form.
+
+```
+[FS]mydb[GS]users[SOH]name[US]amount[RS]Alice[US]1502.30[RS]Bob[US]340.00
 ```
 
-```crystal
-require "c0data"
+### Pretty Form (Human-Readable)
+
+Uses Unicode Control Pictures (U+2400 block) for visible glyphs. Whitespace
+rules:
+
+- LF and CR are ignored (formatting only).
+- Whitespace (spaces, tabs) adjacent to control codes is trimmed.
+- Spaces between non-whitespace data characters are preserved
+  (e.g., "Alice Smith" keeps its space).
+- Inside STX/ETX (␂...␃), all content is preserved verbatim --
+  no trimming. This allows STX/ETX to serve as quoting for values
+  with significant leading/trailing whitespace.
+
 ```
+␜mydb
+  ␝users
+    ␁name␟amount
+    ␞Alice Smith␟1502.30
+    ␞Bob␟340.00
+```
+
+To include a literal LF or CR in a value, DLE-escape it: `[DLE][LF]`.
+
+Quoting with STX/ETX:
+
+```
+␞␂  leading spaces  ␃␟normal value
+```
+
 
 ---
 
-### Builder
+## Data Shapes
 
-Builds C0DATA documents in compact form.
+C0DATA is a system, not a single format. The same control code vocabulary
+expresses multiple common data shapes.
 
-```crystal
-buf = C0data::Builder.build do |b|
-  b.file("mydb") do
-    b.group("users", headers: ["name", "amount"]) do
-      b.record("Alice", "1502.30")
-      b.record("Bob", "340.00")
-    end
-  end
-  b.eot
-end
+| Shape      | Primary Codes Used          | Analogous To         |
+|------------|-----------------------------|----------------------|
+| Tabular    | FS, GS, SOH, RS, US        | CSV, SQL results     |
+| Document   | FS, GS×N, RS, US           | Markdown, outlines   |
+| Key-Value  | GS, SOH, RS, US            | TOML, INI            |
+| Nested     | STX/ETX, any inner codes   | JSON objects         |
+| Reference  | ENQ, STX/ETX for paths     | foreign keys, links  |
+| Diff       | FS, GS, US, SUB, DLE       | unified diff, patches|
+| Stream     | EOT between documents      | NDJSON, SSE          |
+
+### Tabular (SOH header present)
+
+SOH at the start of a group declares field names. Records are positional
+against those names -- like a CSV header row.
+
+```
+␝users
+  ␁name␟amount
+  ␞Alice␟100
+  ␞Bob␟200
 ```
 
-#### Methods
+Without SOH, data is purely positional (schema known by both sides).
 
-**`Builder.build(&) : Bytes`**
-:   Yields a Builder instance to the block and returns the compiled bytes.
+### Key-Value (no header, 2-field records)
 
-**`file(name : String, &)`**
-:   Write a FS separator followed by the name. Block scopes the file content.
+Each RS is an entry: first field is the key, second is the value.
 
-**`group(name : String, headers : Indexable(String)? = nil, &)`**
-:   Write a GS separator, name, and optional SOH header row.
-    Block scopes the group content.
-
-**`record(*fields : String)`**
-:   Write an RS separator followed by US-delimited fields.
-    Also accepts `record(fields : Indexable(String))`.
-
-**`field(value : String)`**
-:   Write a single US-delimited field value. Use within records
-    when building fields incrementally.
-
-**`nested(&)`**
-:   Write an STX/ETX pair. Block contents are scoped inside the nesting.
-
-**`ref(name : String)`**
-:   Write an ENQ reference to a named group.
-
-**`ref(*path : String)`**
-:   Write a path reference: `ENQ STX group US record_id US field ETX`.
-
-**`section(name : String, depth : Int32 = 1, &)`**
-:   Write GS repeated `depth` times for document-mode depth levels.
-
-**`block(text : String)`**
-:   Write RS + text (a content block in document mode).
-
-**`item(text : String)`**
-:   Write US + text (a list item in document mode).
-
-**`eot`**
-:   Write an EOT marker.
-
-**`to_slice : Bytes`**
-:   Return the compiled bytes.
-
----
-
-### Document
-
-Zero-copy navigator for a complete C0DATA document (FS + groups).
-
-```crystal
-doc = C0data::Document.new(buf)
-doc.name                        # => "mydb" (Bytes)
-doc.group_count                 # => 2
-doc["users"].table.headers      # => [Bytes("name"), Bytes("amount")]
+```
+␝database
+  ␞host␟localhost
+  ␞port␟5432
 ```
 
-#### Methods
+### Multi-field records (no header, N fields)
 
-**`Document.new(buf : Bytes)`**
-:   Create a Document accessor from a compact buffer.
-
-**`name : Bytes`**
-:   Document name (text after FS). Empty if no FS present.
-
-**`group_count : Int32`**
-:   Number of top-level groups.
-
-**`group(i : Int32) : Group`**
-:   Get group by index.
-
-**`group(name : String) : Group`**
-:   Get group by name. Raises `KeyError` if not found.
-
-**`[](name : String) : Group`** / **`[](i : Int32) : Group`**
-:   Shorthand for `group(...)`.
-
-**`each_group(& : Group ->)`**
-:   Iterate over all groups.
-
-**`group_names : Array(Bytes)`**
-:   Get all group names.
-
----
-
-### Group
-
-A group within a document.
-
-#### Methods
-
-**`name : Bytes`**
-:   Group name.
-
-**`has_header? : Bool`**
-:   Whether this group has an SOH header row.
-
-**`table : Table`**
-:   Access the group as a Table.
-
-**`record(i : Int32) : Record`**
-:   Get record by index.
-
-**`record_count : Int32`**
-:   Number of records.
-
-**`each_record(& : Record ->)`**
-:   Iterate records.
-
-**`raw : Bytes`**
-:   Raw bytes of this group.
-
----
-
-### Table
-
-Zero-copy accessor for tabular C0DATA data.
-
-```crystal
-table = C0data::Table.new(buf)
-table.name                  # => "users" (Bytes)
-table.headers               # => [Bytes("name"), Bytes("amount")]
-table.record(0).field(0)    # => "Alice" (Bytes, zero-copy slice)
+```
+␝data
+  ␞a␟b␟c
+  ␞d␟e␟f
 ```
 
-#### Methods
+### Nested values (STX/ETX)
 
-**`Table.new(buf : Bytes, offset : Int32 = 0)`**
-:   Create a Table accessor.
+When a field value is itself structured, wrap it in STX/ETX. Inside the
+brackets, the separator hierarchy resets -- codes are scoped to the
+sub-structure. STX/ETX can nest for arbitrary depth.
 
-**`name : Bytes`**
-:   Table/group name.
-
-**`header_count : Int32`**
-:   Number of header fields.
-
-**`header(i : Int32) : Bytes`**
-:   Get header name by index.
-
-**`headers : Array(Bytes)`**
-:   All header names.
-
-**`record_count : Int32`**
-:   Number of records.
-
-**`record(i : Int32) : Record`**
-:   Get record by index.
-
-**`each_record(& : Record ->)`**
-:   Iterate over all records.
-
----
-
-### Record
-
-Zero-copy accessor for a single record.
-
-#### Methods
-
-**`field(n : Int32) : Bytes`**
-:   Get field by index. Skips STX/ETX nested scopes when counting US
-    boundaries.
-
-**`field_count : Int32`**
-:   Number of fields. Respects STX/ETX nesting.
-
-**`fields : Array(Bytes)`**
-:   All fields as byte slices.
-
-**`raw : Bytes`**
-:   Raw bytes of the entire record.
-
----
-
-### Tokenizer
-
-High-performance zero-copy tokenizer. Hot loop is a single comparison:
-`byte < 0x20`.
-
-```crystal
-C0data::Tokenizer.new(buf).each do |token|
-  case token.type
-  when .gs? then puts "Group: #{String.new(token.value(buf))}"
-  when .rs? then puts "Record start"
-  when .data? then puts "Data: #{String.new(token.value(buf))}"
-  end
-end
+```
+␝users
+  ␁name␟address
+  ␞Alice␟␂␁street␟city␞123 Main␟Springfield␃
 ```
 
-#### Methods
+Arrays are US-separated values inside STX/ETX:
 
-**`Tokenizer.new(buf : Bytes)`**
-:   Create a tokenizer.
+```
+␞Alice␟␂Admin␟Editor␟User␃␟1502.30
+```
 
-**`each(& : Token ->)`**
-:   Yield each token. Primary streaming interface.
+### Document (FS wrapper, depth via GS repetition)
 
-**`to_a : Array(Token)`**
-:   Collect all tokens.
+GS repeated indicates depth level (like # in Markdown). Within a section,
+RS marks a content block (paragraph) and US marks sub-elements (list items).
 
-#### Token Struct
+```
+␜My Document
+  ␝Chapter 1
+    ␞First paragraph.
+    ␞A list:
+      ␟Item one
+      ␟Item two
+    ␝␝Section 1.1
+      ␞Nested content.
+  ␝Chapter 2
+    ␞And so on.
+```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `type` | `TokenType` | Token type (see below) |
-| `start` | `Int32` | Start offset in buffer |
-| `end` | `Int32` | End offset in buffer |
+### References (ENQ)
 
-**`size : Int32`** -- byte length.
-**`value(buf : Bytes) : Bytes`** -- zero-copy slice into the buffer.
+ENQ marks a value as a reference to data defined elsewhere. Referenced
+material must be defined **before** any reference to it (enabling single-pass
+parsing).
 
-#### TokenType Enum
+Simple reference (entire group):
 
-`Data`, `SOH`, `STX`, `ETX`, `EOT`, `ENQ`, `DLE`, `SUB`, `FS`, `GS`, `RS`, `US`
+```
+␅tags
+```
 
-#### Exceptions
+Path reference (record or field within a group):
 
-**`C0data::UnassignedCodeError`**
-:   Raised on unassigned control codes. Properties: `byte : UInt8`,
-    `position : Int32`.
+```
+␅␂tags␟001␟label␃
+```
 
-**`C0data::UnexpectedEndError`**
-:   Raised when DLE escape reaches end of input.
+STX/ETX scopes the reference. US separates path segments:
+group → record id → field name.
+
 
 ---
 
-### Pretty
+## C0DIFF
 
-Convert between compact and pretty (Unicode Control Pictures) forms.
+C0DIFF provides atomic multi-file edits using **anchored patterns**. Instead
+of line numbers (which shift), you provide literal context text as anchors
+surrounding the parts you want to change.
 
-```crystal
-pretty = C0data::Pretty.format(buf)
-compact = C0data::Pretty.parse(pretty)
-```
-
-#### Methods
-
-**`Pretty.format(buf : Bytes, indent : String = "  ") : String`**
-:   Format compact buffer as human-readable Unicode string.
-
-**`Pretty.format(buf : Bytes, io : IO, indent : String = "  ")`**
-:   Format to an IO stream.
-
-**`Pretty.parse(str : String) : Bytes`**
-:   Parse pretty-form back to compact bytes.
-    LF/CR are ignored. Whitespace adjacent to control codes is trimmed.
-    Inside STX/ETX, content is preserved verbatim.
-
-**`Pretty.glyph(byte : UInt8) : Char`**
-:   Convert a C0 byte to its Unicode Control Picture character.
-
----
-
-### CSV
-
-Convert between CSV text and C0DATA compact bytes.
-
-```crystal
-buf = C0data::CSV.from_csv(csv_string, group_name: "users")
-csv = C0data::CSV.to_csv(buf)
-```
-
-#### Methods
-
-**`CSV.from_csv(input : String, group_name : String = "data") : Bytes`**
-:   First CSV row becomes SOH headers, remaining rows become records.
-
-**`CSV.to_csv(buf : Bytes) : String`**
-:   Export the first group as CSV. Headers become the first row.
-
----
-
-### JSON
-
-Convert between JSON/YAML and C0DATA compact bytes. Handles nested
-structures using STX/ETX scoping.
-
-```crystal
-# Import
-buf = C0data::JSON.from_json(json_string)
-buf = C0data::JSON.from_yaml(yaml_string, group_name: "config")
-
-# Export
-json = C0data::JSON.to_json(buf)
-yaml = C0data::JSON.to_yaml(buf)
-```
-
-#### Type Alias
-
-```crystal
-alias C0data::JSON::Value = String | Array(Value) | Hash(String, Value)
-```
-
-Intermediate recursive type used during conversion.
-
-#### Methods
-
-**`JSON.from_json(input : String, group_name : String = "data") : Bytes`**
-:   Convert JSON to C0DATA. Shape detection:
-    - Object with array-of-objects values → tabular groups with FS wrapper
-    - Object with scalar values → key-value group
-    - Array of objects → tabular group
-    - Nested Hash/Array values → STX/ETX sub-structures
-
-**`JSON.from_yaml(input : String, group_name : String = "data") : Bytes`**
-:   Same as `from_json` but parses YAML input.
-
-**`JSON.to_json(buf : Bytes) : String`**
-:   Convert C0DATA to pretty-printed JSON. Shape detection:
-    - SOH headers → array of objects
-    - 2-field records without header → flat key-value object
-    - N-field records without header → array of arrays
-    - STX/ETX fields → nested JSON objects/arrays
-
-**`JSON.to_yaml(buf : Bytes) : String`**
-:   Same structure as `to_json` but outputs YAML.
-
----
-
-### Diff
-
-C0DIFF provides atomic multi-file edits using **anchored patterns**.
-The key idea: instead of line numbers (which shift), you provide
-literal context text as anchors surrounding the parts you want to change.
-
-#### How it works
+### How It Works
 
 A section is a sequence of **units** separated by US. Each unit is either:
 
@@ -413,11 +221,13 @@ A section is a sequence of **units** separated by US. Each unit is either:
 Units are concatenated to build a search pattern. The pattern must match
 **exactly once** in the file. Then only the SUB-marked parts are replaced.
 
-**Example:** Given a file `greeting.txt` containing `Hello world!`
+### Example
+
+Given a file `greeting.txt` containing `Hello world!`:
 
 ```
-[FS]greeting.txt
-[GS]Hello [US]world[SUB]universe[US]!
+␜greeting.txt
+  ␝Hello ␟world␚universe␟!
 ```
 
 This breaks down as:
@@ -425,45 +235,29 @@ This breaks down as:
 | Unit | Type | Search contributes | Replacement contributes |
 |------|------|-------------------|------------------------|
 | `Hello ` | anchor | `Hello ` | `Hello ` |
-| `world[SUB]universe` | substitution | `world` | `universe` |
+| `world␚universe` | substitution | `world` | `universe` |
 | `!` | anchor | `!` | `!` |
 
 Search pattern: `Hello world!` (must match exactly once).
 Replacement: `Hello universe!` (only `world` → `universe` changes).
 
-The anchors before **and** after the substitution are what make the match
-precise. You can use as many or as few anchors as needed to ensure a
-unique match.
+### Anchors
 
-#### Anchors on one side, both sides, or multiple substitutions
+You can anchor on one side, both sides, or use multiple substitutions:
 
-```crystal
+```
 # Anchor before only (enough if "def run" is unique in context)
-b.section do |s|
-  s.anchor("class App\n  def ")
-  s.sub("run", "start")
-end
+␝class App\n  def ␟run␚start
 
 # Anchors before and after (more precise)
-b.section do |s|
-  s.anchor("Hello ")
-  s.sub("world", "universe")
-  s.anchor("!")
-end
+␝Hello ␟world␚universe␟!
 
 # Multiple substitutions in one section
-b.section do |s|
-  s.anchor("x = ")
-  s.sub("10", "20")
-  s.anchor(" + ")
-  s.sub("5", "15")
-end
+␝x = ␟10␚20␟ + ␟5␚15
 # Finds "x = 10 + 5", produces "x = 20 + 15"
 ```
 
-#### Atomicity guarantee
-
-When applying a diff (whether in-memory or on disk):
+### Atomicity Guarantee
 
 1. **Validate first** -- every section's search pattern is checked against
    every target file. Each pattern must match **exactly once**. Zero
@@ -472,93 +266,144 @@ When applying a diff (whether in-memory or on disk):
    **nothing is modified**. No partial writes, no half-applied diffs.
 3. **Then write** -- all replacements are applied and files are written.
 
-This means a C0DIFF document is an all-or-nothing transaction across
-multiple files.
+A C0DIFF document is an all-or-nothing transaction across multiple files.
 
-#### Building and applying
+### Relationship to C0DATA
 
-```crystal
-# Build a diff
-diff = C0data::Diff.build do |b|
-  b.file("src/app.cr") do
-    # Full control with section builder
-    b.section do |s|
-      s.anchor("class App\n  def ")
-      s.sub("run", "start")
-      s.anchor("\n")
-    end
-  end
+C0DIFF shares the same control code vocabulary. FS and GS retain their
+structural meanings (file boundary, section/group boundary). US retains
+its role as a unit-level separator. DLE is the same escape mechanism.
+SUB takes on a diff-specific role that aligns with its original C0
+semantic -- substitution.
 
-  b.file("src/config.cr") do
-    # Shorthand for simple replacements
-    b.replace("host = \"", "localhost", "0.0.0.0", "\"")
-  end
-end
 
-# Apply to in-memory file contents
-files = {
-  "src/app.cr" => app_source,
-  "src/config.cr" => config_source,
-}
-result = C0data::Diff.apply(diff, files)
-# => Hash with modified contents (unmodified files included too)
+---
 
-# Or apply directly to files on disk
-C0data::Diff.apply_files(diff, base_dir: ".")
+## Escaping (DLE)
+
+DLE (0x10) escapes the next byte as literal data, not a control code.
+
+- A literal 0x1E in a value: `[DLE][0x1E]`
+- A literal DLE in a value: `[DLE][DLE]`
+
+DLE was chosen over ESC (0x1B) to avoid conflict with ANSI escape sequences.
+
+
+---
+
+## Document Termination (EOT)
+
+EOT (0x04) marks the end of a complete C0DATA document. Optional in
+file-at-rest scenarios (EOF is implicit). Useful for streaming, where
+multiple documents may be sent over a single connection.
+
+
+---
+
+## Consistent Roles Across Shapes
+
+The separator codes maintain consistent meaning across all data shapes:
+
+| Shape      | RS means          | US means                  |
+|------------|-------------------|---------------------------|
+| Tabular    | row               | field / column            |
+| Document   | paragraph / block | list item / element       |
+| Key-Value  | entry             | key → value               |
+| Diff       | --                | anchor ↔ replacement unit |
+
+
+---
+
+## Data Shape Mapping
+
+How C0DATA maps to and from JSON/YAML/CSV.
+
+### Tabular → JSON
+
+```
+␝users
+  ␁name␟amount
+  ␞Alice␟100
+  ␞Bob␟200
 ```
 
-#### Module Methods
+```json
+{"users": [{"name": "Alice", "amount": "100"}, {"name": "Bob", "amount": "200"}]}
+```
 
-**`Diff.build(& : DiffBuilder ->) : Bytes`**
-:   Build a C0DIFF document.
+```csv
+name,amount
+Alice,100
+Bob,200
+```
 
-**`Diff.parse(buf : Bytes) : Array(FileEdit)`**
-:   Parse a C0DIFF buffer into file edits.
+### Key-Value → JSON
 
-**`Diff.apply(diff_buf : Bytes, files : Hash(String, String)) : Hash(String, String)`**
-:   Apply diff to in-memory file contents. Validates all patterns across
-    all files first. Raises `C0data::Error` if any pattern matches zero
-    or more than one time. Returns the full file hash (modified +
-    unmodified files).
+```
+␝database
+  ␞host␟localhost
+  ␞port␟5432
+```
 
-**`Diff.apply_files(diff_buf : Bytes, base_dir : String = ".")`**
-:   Apply diff to files on disk. Same validation guarantees. Raises
-    `C0data::Error` if any file is missing or any pattern fails.
+```json
+{"database": {"host": "localhost", "port": "5432"}}
+```
 
-#### DiffBuilder
+### Multi-field → JSON
 
-**`file(path : String, &)`**
-:   Start a file edit block.
+```
+␝data
+  ␞a␟b␟c
+  ␞d␟e␟f
+```
 
-**`section(& : SectionBuilder ->)`**
-:   Add a pattern section with full control over anchors and substitutions.
+```json
+{"data": [["a", "b", "c"], ["d", "e", "f"]]}
+```
 
-**`replace(context_before, old_text, new_text, context_after = "")`**
-:   Shorthand for a section with one substitution. Equivalent to:
-    `anchor(context_before) + sub(old_text, new_text) + anchor(context_after)`.
+### Nested → JSON
 
-#### SectionBuilder
+```
+␝users
+  ␁name␟address
+  ␞Alice␟␂␁street␟city␞123 Main␟Springfield␃
+```
 
-**`anchor(text : String)`**
-:   Add literal anchor text. Anchors appear in both the search pattern and
-    the replacement unchanged. They provide the context that ensures a
-    unique match.
+```json
+{"users": [{"name": "Alice", "address": {"street": "123 Main", "city": "Springfield"}}]}
+```
 
-**`sub(old_text : String, new_text : String)`**
-:   Add a substitution. `old_text` appears in the search pattern,
-    `new_text` appears in the replacement.
+### Document → JSON
 
-#### Data Types
+```
+␜mydb
+  ␝users
+    ␁name
+    ␞Alice
+  ␝products
+    ␁id
+    ␞01
+```
 
-**`FileEdit`** -- `path : Bytes`, `sections : Array(Section)`
+```json
+{"mydb": {"users": [{"name": "Alice"}], "products": [{"id": "01"}]}}
+```
 
-**`Section`** -- `units : Array(Unit)`
-:   `search_pattern : Bytes` -- all units concatenated using old text.
-    `replacement : Bytes` -- all units concatenated using new text.
 
-**`Sub`** -- `old : Bytes`, `new : Bytes`
+---
 
-**`Unit`** -- `Bytes | Sub` (literal anchor or substitution)
+## Performance
+
+The tokenizer's hot loop is a single comparison: `byte < 0x20`. This makes
+C0DATA inherently fast to parse -- single-byte delimiters, zero-copy
+friendly, and SIMD-acceleratable.
+
+Benchmark on 10 MB document (Crystal, --release):
+
+```
+avg         4.88 ms       2048.0 MB/s
+best        4.09 ms       2447.7 MB/s
+```
 
 
 ---
@@ -679,77 +524,21 @@ c0fmt import csv users.csv | c0fmt export csv
 
 ---
 
-## Data Shape Mapping
+## Crystal API
 
-How C0DATA maps to and from JSON/YAML/CSV.
+For the Crystal library API documentation, see the generated
+[API docs](../api/index.html).
 
-### Tabular (SOH header present)
+### Installation
 
-```
-␝users
-  ␁name␟amount
-  ␞Alice␟100
-  ␞Bob␟200
-```
+Add to your `shard.yml`:
 
-```json
-{"users": [{"name": "Alice", "amount": "100"}, {"name": "Bob", "amount": "200"}]}
+```yaml
+dependencies:
+  c0:
+    github: trans/c0data
 ```
 
-```csv
-name,amount
-Alice,100
-Bob,200
-```
-
-### Key-Value (no header, 2-field records)
-
-```
-␝database
-  ␞host␟localhost
-  ␞port␟5432
-```
-
-```json
-{"database": {"host": "localhost", "port": "5432"}}
-```
-
-### Multi-field records (no header, N fields)
-
-```
-␝data
-  ␞a␟b␟c
-  ␞d␟e␟f
-```
-
-```json
-{"data": [["a", "b", "c"], ["d", "e", "f"]]}
-```
-
-### Nested values (STX/ETX)
-
-```
-␝users
-  ␁name␟address
-  ␞Alice␟␂␁street␟city␞123 Main␟Springfield␃
-```
-
-```json
-{"users": [{"name": "Alice", "address": {"street": "123 Main", "city": "Springfield"}}]}
-```
-
-### Document (FS wrapper)
-
-```
-␜mydb
-  ␝users
-    ␁name
-    ␞Alice
-  ␝products
-    ␁id
-    ␞01
-```
-
-```json
-{"mydb": {"users": [{"name": "Alice"}], "products": [{"id": "01"}]}}
+```crystal
+require "c0"
 ```

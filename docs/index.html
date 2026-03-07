@@ -659,6 +659,8 @@
       <li><a href="#shapes">Shapes</a></li>
       <li><a href="#bench">Benchmarks</a></li>
       <li><a href="#start">Get Started</a></li>
+      <li><a href="tech/">Reference</a></li>
+      <li><a href="api/">API</a></li>
       <li><a href="https://github.com/trans/c0data">GitHub</a></li>
     </ul>
   </div>
@@ -949,13 +951,13 @@
       <h4>As a library</h4>
 <pre><span class="dim"># shard.yml</span>
 <span class="kw">dependencies</span>:
-  <span class="kw">c0data</span>:
+  <span class="kw">c0</span>:
     <span class="kw">github</span>: <span class="str">trans/c0data</span></pre>
     </div>
 
     <div class="install-block">
       <h4>Build data</h4>
-<pre>buf = <span class="kw">C0data::Builder</span>.build <span class="kw">do</span> |b|
+<pre>buf = <span class="kw">C0::Builder</span>.build <span class="kw">do</span> |b|
   b.group(<span class="str">"users"</span>, headers: [<span class="str">"name"</span>, <span class="str">"amount"</span>]) <span class="kw">do</span>
     b.record(<span class="str">"Alice"</span>, <span class="str">"1502.30"</span>)
     b.record(<span class="str">"Bob"</span>, <span class="str">"340.00"</span>)
@@ -965,7 +967,7 @@
 
     <div class="install-block">
       <h4>Read data</h4>
-<pre>table = <span class="kw">C0data::Table</span>.new(buf)
+<pre>table = <span class="kw">C0::Table</span>.new(buf)
 table.record(<span class="str">0</span>).field(<span class="str">0</span>)  <span class="dim"># => "Alice" (zero-copy slice)</span></pre>
     </div>
 
@@ -990,6 +992,8 @@ c0fmt import yaml settings.yml | c0fmt compact -o data.c0</pre>
     <div class="footer-links">
       <a href="https://github.com/trans/c0data">GitHub</a>
       <a href="https://github.com/trans/c0data/blob/main/DESIGN.md">Spec</a>
+      <a href="tech/">Reference</a>
+      <a href="api/">API</a>
       <a href="https://github.com/trans/c0data/blob/main/LICENSE">MIT License</a>
     </div>
     <p>C0DATA &mdash; the invisible made visible.</p>
