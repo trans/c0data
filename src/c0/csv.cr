@@ -1,6 +1,6 @@
 require "csv"
 
-module C0data
+module C0
   module CSV
     # Convert CSV text to C0DATA compact bytes.
     #

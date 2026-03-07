@@ -1,4 +1,4 @@
-module C0data
+module C0
   # Unicode Control Pictures (U+2400 block) for pretty-printing.
   # Each C0 code at position N maps to U+2400+N.
   module Pretty

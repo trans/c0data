@@ -1,4 +1,4 @@
-module C0data
+module C0
   # Zero-copy navigator for a full C0DATA document.
   #
   # Walks an entire buffer containing FS/GS/RS/US structure and provides
@@ -6,7 +6,7 @@ module C0data
   # original buffer.
   #
   # Example:
-  #   doc = C0data::Document.new(buf)
+  #   doc = C0::Document.new(buf)
   #   doc.name                     # => "mydb"
   #   doc.groups.size              # => 2
   #   doc.group("users")           # => Group

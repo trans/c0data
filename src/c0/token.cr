@@ -1,4 +1,4 @@
-module C0data
+module C0
   enum TokenType
     # Data content between control codes
     Data

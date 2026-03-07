@@ -1,8 +1,8 @@
 # TODO: Add shell completion generation (Jargon supports bash/zsh/fish via --completions)
 require "jargon"
-require "./c0data"
-require "./c0data/csv"
-require "./c0data/json"
+require "./c0"
+require "./c0/csv"
+require "./c0/json"
 
 SCHEMA = <<-YAML
 ---
@@ -110,9 +110,9 @@ cli.run do |result|
           gname = result["group"]?.try(&.as_s) || input_file.try { |f| File.basename(f, File.extname(f)) } || "data"
 
           buf = case format
-                when "csv"  then C0data::CSV.from_csv(input, group_name: gname)
-                when "json" then C0data::JSON.from_json(input, group_name: gname)
-                when "yaml" then C0data::JSON.from_yaml(input, group_name: gname)
+                when "csv"  then C0::CSV.from_csv(input, group_name: gname)
+                when "json" then C0::JSON.from_json(input, group_name: gname)
+                when "yaml" then C0::JSON.from_yaml(input, group_name: gname)
                 else
                   STDERR.puts "Cannot detect input format. Specify: c0fmt import <csv|json|yaml> [file]"
                   exit 1
@@ -124,15 +124,15 @@ cli.run do |result|
           buf = to_compact(input)
 
           case format
-          when "csv"  then C0data::CSV.to_csv(buf)
-          when "json" then C0data::JSON.to_json(buf)
-          when "yaml" then C0data::JSON.to_yaml(buf)
+          when "csv"  then C0::CSV.to_csv(buf)
+          when "json" then C0::JSON.to_json(buf)
+          when "yaml" then C0::JSON.to_yaml(buf)
           else raise "unreachable"
           end
 
         when "pretty"
           buf = to_compact(input)
-          C0data::Pretty.format(buf)
+          C0::Pretty.format(buf)
 
         when "compact"
           buf = to_compact(input)
@@ -141,10 +141,10 @@ cli.run do |result|
         when "validate"
           buf = to_compact(input)
           begin
-            C0data::Tokenizer.new(buf).each { }
+            C0::Tokenizer.new(buf).each { }
             STDERR.puts "valid"
             exit 0
-          rescue ex : C0data::Error
+          rescue ex : C0::Error
             STDERR.puts "invalid: #{ex.message}"
             exit 1
           end
@@ -171,7 +171,7 @@ end
 # Convert input to compact bytes, auto-detecting pretty vs compact
 def to_compact(input : String) : Bytes
   if pretty_input?(input)
-    C0data::Pretty.parse(input)
+    C0::Pretty.parse(input)
   else
     input.to_slice
   end

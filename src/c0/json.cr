@@ -1,7 +1,7 @@
 require "json"
 require "yaml"
 
-module C0data
+module C0
   module JSON
     # Recursive value type for intermediate data structures.
     alias Value = String | Array(Value) | Hash(String, Value)

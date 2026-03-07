@@ -1,6 +1,6 @@
-require "../src/c0data"
-require "../src/c0data/csv"
-require "../src/c0data/json"
+require "../src/c0"
+require "../src/c0/csv"
+require "../src/c0/json"
 
 def time_it(label : String, iterations : Int32 = 5, &block : -> Nil) : Nil
   # warmup
@@ -31,7 +31,7 @@ puts "════════════════════════�
 puts
 
 # Build C0DATA compact buffer
-c0buf = C0data::Builder.build do |b|
+c0buf = C0::Builder.build do |b|
   b.group("data", headers: ["id", "name", "value", "tags", "label"]) do
     rows.times do |i|
       b.record(i.to_s, "item-#{i}", "#{i * 17 % 1000}.#{(i * 31 % 100).to_s.rjust(2, '0')}", "alpha,beta,gamma", "entry ##{i}")
@@ -40,13 +40,13 @@ c0buf = C0data::Builder.build do |b|
 end
 
 # Build all forms
-pretty_str = C0data::Pretty.format(c0buf)
-csv_str = C0data::CSV.to_csv(c0buf)
-json_str = C0data::JSON.to_json(c0buf)
-yaml_str = C0data::JSON.to_yaml(c0buf)
+pretty_str = C0::Pretty.format(c0buf)
+csv_str = C0::CSV.to_csv(c0buf)
+json_str = C0::JSON.to_json(c0buf)
+yaml_str = C0::JSON.to_yaml(c0buf)
 
 # Pre-parse pretty to compact for pretty-input benchmarks
-pretty_buf = C0data::Pretty.parse(pretty_str)
+pretty_buf = C0::Pretty.parse(pretty_str)
 
 puts "  Sizes"
 puts "  ──────────────────────────────────────────────────────────"
@@ -60,63 +60,63 @@ puts
 puts "  Export from compact (C0DATA →)"
 puts "  ──────────────────────────────────────────────────────────"
 
-time_it("compact → CSV") { C0data::CSV.to_csv(c0buf) }
-time_it("compact → JSON") { C0data::JSON.to_json(c0buf) }
-time_it("compact → YAML") { C0data::JSON.to_yaml(c0buf) }
-time_it("compact → pretty") { C0data::Pretty.format(c0buf) }
+time_it("compact → CSV") { C0::CSV.to_csv(c0buf) }
+time_it("compact → JSON") { C0::JSON.to_json(c0buf) }
+time_it("compact → YAML") { C0::JSON.to_yaml(c0buf) }
+time_it("compact → pretty") { C0::Pretty.format(c0buf) }
 
 puts
 puts "  Export from pretty (pretty C0DATA →)"
 puts "  ──────────────────────────────────────────────────────────"
 
 time_it("pretty → compact → CSV") do
-  buf = C0data::Pretty.parse(pretty_str)
-  C0data::CSV.to_csv(buf)
+  buf = C0::Pretty.parse(pretty_str)
+  C0::CSV.to_csv(buf)
 end
 
 time_it("pretty → compact → JSON") do
-  buf = C0data::Pretty.parse(pretty_str)
-  C0data::JSON.to_json(buf)
+  buf = C0::Pretty.parse(pretty_str)
+  C0::JSON.to_json(buf)
 end
 
 time_it("pretty → compact → YAML") do
-  buf = C0data::Pretty.parse(pretty_str)
-  C0data::JSON.to_yaml(buf)
+  buf = C0::Pretty.parse(pretty_str)
+  C0::JSON.to_yaml(buf)
 end
 
 puts
 puts "  Import (→ C0DATA compact)"
 puts "  ──────────────────────────────────────────────────────────"
 
-time_it("CSV → compact") { C0data::CSV.from_csv(csv_str, group_name: "data") }
-time_it("JSON → compact") { C0data::JSON.from_json(json_str) }
-time_it("YAML → compact") { C0data::JSON.from_yaml(yaml_str) }
-time_it("pretty → compact") { C0data::Pretty.parse(pretty_str) }
+time_it("CSV → compact") { C0::CSV.from_csv(csv_str, group_name: "data") }
+time_it("JSON → compact") { C0::JSON.from_json(json_str) }
+time_it("YAML → compact") { C0::JSON.from_yaml(yaml_str) }
+time_it("pretty → compact") { C0::Pretty.parse(pretty_str) }
 
 puts
 puts "  Round-trips"
 puts "  ──────────────────────────────────────────────────────────"
 
 time_it("CSV → compact → CSV") do
-  buf = C0data::CSV.from_csv(csv_str, group_name: "data")
-  C0data::CSV.to_csv(buf)
+  buf = C0::CSV.from_csv(csv_str, group_name: "data")
+  C0::CSV.to_csv(buf)
 end
 
 time_it("JSON → compact → JSON") do
-  buf = C0data::JSON.from_json(json_str)
-  C0data::JSON.to_json(buf)
+  buf = C0::JSON.from_json(json_str)
+  C0::JSON.to_json(buf)
 end
 
 time_it("pretty → compact → pretty") do
-  buf = C0data::Pretty.parse(pretty_str)
-  C0data::Pretty.format(buf)
+  buf = C0::Pretty.parse(pretty_str)
+  C0::Pretty.format(buf)
 end
 
 time_it("JSON → compact → pretty → CSV") do
-  buf = C0data::JSON.from_json(json_str)
-  pretty = C0data::Pretty.format(buf)
-  buf2 = C0data::Pretty.parse(pretty)
-  C0data::CSV.to_csv(buf2)
+  buf = C0::JSON.from_json(json_str)
+  pretty = C0::Pretty.format(buf)
+  buf2 = C0::Pretty.parse(pretty)
+  C0::CSV.to_csv(buf2)
 end
 
 puts

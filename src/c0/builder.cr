@@ -1,8 +1,8 @@
-module C0data
+module C0
   # Builds C0DATA documents in compact form.
   #
   # Example:
-  #   buf = C0data::Builder.build do |b|
+  #   buf = C0::Builder.build do |b|
   #     b.file("mydb") do
   #       b.group("users", headers: ["name", "amount", "type"]) do
   #         b.record("Alice", "1502.30", "DEPOSIT")

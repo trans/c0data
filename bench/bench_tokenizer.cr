@@ -1,4 +1,4 @@
-require "../src/c0data"
+require "../src/c0"
 
 # Generates a C0DATA document equivalent to YAM's benchmark YAML.
 #
@@ -33,71 +33,71 @@ def generate_c0data(target_size : Int32) : Bytes
   io = IO::Memory.new(target_size + 4096)
 
   # File header
-  io.write_byte(C0data::FS)
+  io.write_byte(C0::FS)
   io << "benchmark"
 
   # Metadata group (key-value style)
-  io.write_byte(C0data::GS)
+  io.write_byte(C0::GS)
   io << "metadata"
-  io.write_byte(C0data::SOH)
+  io.write_byte(C0::SOH)
   io << "key"
-  io.write_byte(C0data::US)
+  io.write_byte(C0::US)
   io << "value"
-  io.write_byte(C0data::RS)
+  io.write_byte(C0::RS)
   io << "name"
-  io.write_byte(C0data::US)
+  io.write_byte(C0::US)
   io << "benchmark-data"
-  io.write_byte(C0data::RS)
+  io.write_byte(C0::RS)
   io << "version"
-  io.write_byte(C0data::US)
+  io.write_byte(C0::US)
   io << "1.2.0"
-  io.write_byte(C0data::RS)
+  io.write_byte(C0::RS)
   io << "generated"
-  io.write_byte(C0data::US)
+  io.write_byte(C0::US)
   io << "true"
 
   # Entries group (tabular style)
-  io.write_byte(C0data::GS)
+  io.write_byte(C0::GS)
   io << "entries"
-  io.write_byte(C0data::SOH)
+  io.write_byte(C0::SOH)
   io << "id"
-  io.write_byte(C0data::US)
+  io.write_byte(C0::US)
   io << "name"
-  io.write_byte(C0data::US)
+  io.write_byte(C0::US)
   io << "value"
-  io.write_byte(C0data::US)
+  io.write_byte(C0::US)
   io << "tags"
-  io.write_byte(C0data::US)
+  io.write_byte(C0::US)
   io << "x"
-  io.write_byte(C0data::US)
+  io.write_byte(C0::US)
   io << "y"
-  io.write_byte(C0data::US)
+  io.write_byte(C0::US)
   io << "label"
 
   item = 0
   while io.size < target_size
-    io.write_byte(C0data::RS)
+    io.write_byte(C0::RS)
     io << item
-    io.write_byte(C0data::US)
+    io.write_byte(C0::US)
     io << "item-"
     io << item
-    io.write_byte(C0data::US)
+    io.write_byte(C0::US)
     io << (item &* 17 % 1000)
     io << "."
     io << (item &* 31 % 100).to_s.rjust(2, '0')
-    io.write_byte(C0data::US)
+    io.write_byte(C0::US)
     io << "alpha,beta,gamma"
-    io.write_byte(C0data::US)
+    io.write_byte(C0::US)
     io << (item &* 7 % 500)
-    io.write_byte(C0data::US)
+    io.write_byte(C0::US)
     io << (item &* 13 % 500)
-    io.write_byte(C0data::US)
+    io.write_byte(C0::US)
     io << "entry #"
     io << item
     item += 1
   end
 
-  io.write_byte(C0data::EOT)
+  io.write_byte(C0::EOT)
   io.to_slice
 end
 
@@ -105,7 +105,7 @@ def bench_c0data(buf : Bytes) : {Float64, Int32}
   t0 = Time.instant
   count = 0
 
-  tokenizer = C0data::Tokenizer.new(buf)
+  tokenizer = C0::Tokenizer.new(buf)
   tokenizer.each do |_token|
     count += 1
   end

@@ -11,16 +11,16 @@ def buf(*parts : String | UInt8) : Bytes
   io.to_slice
 end
 
-describe C0data::Table do
+describe C0::Table do
   it "reads group name" do
-    b = buf(C0data::GS, "users", C0data::RS, "Alice")
-    t = C0data::Table.new(b)
+    b = buf(C0::GS, "users", C0::RS, "Alice")
+    t = C0::Table.new(b)
     String.new(t.name).should eq("users")
   end
 
   it "reads SOH headers" do
-    b = buf(C0data::GS, "users", C0data::SOH, "name", C0data::US, "amount", C0data::RS, "Alice", C0data::US, "1502.30")
-    t = C0data::Table.new(b)
+    b = buf(C0::GS, "users", C0::SOH, "name", C0::US, "amount", C0::RS, "Alice", C0::US, "1502.30")
+    t = C0::Table.new(b)
     t.header_count.should eq(2)
     String.new(t.header(0)).should eq("name")
     String.new(t.header(1)).should eq("amount")
@@ -28,12 +28,12 @@ describe C0data::Table do
 
   it "reads records and fields" do
     b = buf(
-      C0data::GS, "users",
-      C0data::SOH, "name", C0data::US, "amount", C0data::US, "type",
-      C0data::RS, "Alice", C0data::US, "1502.30", C0data::US, "DEPOSIT",
-      C0data::RS, "Bob", C0data::US, "340.00", C0data::US, "WITHDRAWAL"
+      C0::GS, "users",
+      C0::SOH, "name", C0::US, "amount", C0::US, "type",
+      C0::RS, "Alice", C0::US, "1502.30", C0::US, "DEPOSIT",
+      C0::RS, "Bob", C0::US, "340.00", C0::US, "WITHDRAWAL"
     )
-    t = C0data::Table.new(b)
+    t = C0::Table.new(b)
 
     t.record_count.should eq(2)
 
@@ -48,11 +48,11 @@ describe C0data::Table do
 
   it "handles table without SOH header" do
     b = buf(
-      C0data::GS, "data",
-      C0data::RS, "a", C0data::US, "b",
-      C0data::RS, "c", C0data::US, "d"
+      C0::GS, "data",
+      C0::RS, "a", C0::US, "b",
+      C0::RS, "c", C0::US, "d"
     )
-    t = C0data::Table.new(b)
+    t = C0::Table.new(b)
     t.header_count.should eq(0)
     t.record_count.should eq(2)
     String.new(t.record(0).field(0)).should eq("a")
@@ -61,33 +61,33 @@ describe C0data::Table do
 
   it "stops at next GS boundary" do
     b = buf(
-      C0data::GS, "t1",
-      C0data::RS, "a", C0data::US, "b",
-      C0data::GS, "t2",
-      C0data::RS, "c", C0data::US, "d"
+      C0::GS, "t1",
+      C0::RS, "a", C0::US, "b",
+      C0::GS, "t2",
+      C0::RS, "c", C0::US, "d"
     )
-    t = C0data::Table.new(b)
+    t = C0::Table.new(b)
     t.record_count.should eq(1)
     String.new(t.name).should eq("t1")
   end
 
   it "stops at EOT" do
     b = buf(
-      C0data::GS, "t1",
-      C0data::RS, "x",
-      C0data::EOT
+      C0::GS, "t1",
+      C0::RS, "x",
+      C0::EOT
     )
-    t = C0data::Table.new(b)
+    t = C0::Table.new(b)
     t.record_count.should eq(1)
     String.new(t.record(0).field(0)).should eq("x")
   end
 
   it "handles empty fields" do
     b = buf(
-      C0data::GS, "t",
-      C0data::RS, C0data::US, "val", C0data::US
+      C0::GS, "t",
+      C0::RS, C0::US, "val", C0::US
     )
-    t = C0data::Table.new(b)
+    t = C0::Table.new(b)
     t.record(0).field_count.should eq(3)
     t.record(0).field(0).size.should eq(0)
     String.new(t.record(0).field(1)).should eq("val")
@@ -96,22 +96,22 @@ describe C0data::Table do
 
   it "handles DLE-escaped bytes in fields" do
     b = buf(
-      C0data::GS, "t",
-      C0data::RS, "hello", C0data::DLE, C0data::US, "world"
+      C0::GS, "t",
+      C0::RS, "hello", C0::DLE, C0::US, "world"
     )
-    t = C0data::Table.new(b)
+    t = C0::Table.new(b)
     # DLE+US is escaped, so this is one field, not two
     t.record(0).field_count.should eq(1)
   end
 
   it "iterates records" do
     b = buf(
-      C0data::GS, "t",
-      C0data::RS, "a",
-      C0data::RS, "b",
-      C0data::RS, "c"
+      C0::GS, "t",
+      C0::RS, "a",
+      C0::RS, "b",
+      C0::RS, "c"
     )
-    t = C0data::Table.new(b)
+    t = C0::Table.new(b)
     names = [] of String
     t.each_record { |r| names << String.new(r.field(0)) }
     names.should eq(["a", "b", "c"])

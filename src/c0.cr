@@ -1,4 +1,4 @@
-module C0data
+module C0
   VERSION = "0.5.0"
 
   # Assigned C0 control codes
@@ -23,12 +23,12 @@ module C0data
   ]
 end
 
-require "./c0data/token"
-require "./c0data/tokenizer"
-require "./c0data/table"
-require "./c0data/document"
-require "./c0data/builder"
-require "./c0data/pretty"
-require "./c0data/diff"
-require "./c0data/csv"
-require "./c0data/json"
+require "./c0/token"
+require "./c0/tokenizer"
+require "./c0/table"
+require "./c0/document"
+require "./c0/builder"
+require "./c0/pretty"
+require "./c0/diff"
+require "./c0/csv"
+require "./c0/json"

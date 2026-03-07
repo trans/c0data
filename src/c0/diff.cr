@@ -1,4 +1,4 @@
-module C0data
+module C0
   # C0DIFF parser and applier for atomic multi-file edits.
   #
   # Format:

@@ -1,4 +1,4 @@
-module C0data
+module C0
   class Error < Exception; end
 
   class UnassignedCodeError < Error
@@ -74,18 +74,18 @@ module C0data
     @[AlwaysInline]
     private def handle_control(byte : UInt8, & : Token ->) : Nil
       case byte
-      when C0data::DLE
+      when C0::DLE
         yield scan_escape
-      when C0data::SOH then yield_control(TokenType::SOH) { |t| yield t }
-      when C0data::STX then yield_control(TokenType::STX) { |t| yield t }
-      when C0data::ETX then yield_control(TokenType::ETX) { |t| yield t }
-      when C0data::EOT then yield_control(TokenType::EOT) { |t| yield t }
-      when C0data::ENQ then yield_control(TokenType::ENQ) { |t| yield t }
-      when C0data::SUB then yield_control(TokenType::SUB) { |t| yield t }
-      when C0data::FS  then yield_control(TokenType::FS)  { |t| yield t }
-      when C0data::GS  then yield_control(TokenType::GS)  { |t| yield t }
-      when C0data::RS  then yield_control(TokenType::RS)  { |t| yield t }
-      when C0data::US  then yield_control(TokenType::US)  { |t| yield t }
+      when C0::SOH then yield_control(TokenType::SOH) { |t| yield t }
+      when C0::STX then yield_control(TokenType::STX) { |t| yield t }
+      when C0::ETX then yield_control(TokenType::ETX) { |t| yield t }
+      when C0::EOT then yield_control(TokenType::EOT) { |t| yield t }
+      when C0::ENQ then yield_control(TokenType::ENQ) { |t| yield t }
+      when C0::SUB then yield_control(TokenType::SUB) { |t| yield t }
+      when C0::FS  then yield_control(TokenType::FS)  { |t| yield t }
+      when C0::GS  then yield_control(TokenType::GS)  { |t| yield t }
+      when C0::RS  then yield_control(TokenType::RS)  { |t| yield t }
+      when C0::US  then yield_control(TokenType::US)  { |t| yield t }
       else
         raise UnassignedCodeError.new(byte, @pos)
       end

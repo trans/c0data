@@ -1,4 +1,4 @@
-module C0data
+module C0
   # Zero-copy accessor for a tabular C0DATA group.
   #
   # Scans the buffer once to index record positions, then provides
