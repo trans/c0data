@@ -131,8 +131,8 @@ Add the dependency to your `shard.yml`:
 
 ```yaml
 dependencies:
-  c0data:
-    github: transfire/c0data
+  c0:
+    github: trans/c0data
 ```
 
 Then run `shards install`.
@@ -140,13 +140,70 @@ Then run `shards install`.
 ## Usage
 
 ```crystal
-require "c0data"
+require "c0"
+```
+
+### Serializable
+
+Like `JSON::Serializable`, include `C0::Serializable` in a class to get
+`to_c0` and `from_c0` methods:
+
+```crystal
+class User
+  include C0::Serializable
+
+  property name : String
+  property amount : String
+
+  def initialize(@name = "", @amount = "")
+  end
+end
+
+# Serialize
+user = User.new("Alice", "1502.30")
+buf = user.to_c0               # => Bytes (compact form)
+str = user.to_c0_pretty        # => String (pretty form)
+
+# Deserialize
+user = User.from_c0(buf)
+user = User.from_c0(pretty_string)
+
+# Collections
+users = [User.new("Alice", "100"), User.new("Bob", "200")]
+buf = users.to_c0              # multi-record group
+restored = User.array_from_c0(buf)
+```
+
+Field annotations:
+
+```crystal
+class Product
+  include C0::Serializable
+
+  @[C0::Field(key: "product_id")]
+  property id : Int32 = 0
+
+  @[C0::Field(ignore: true)]
+  property internal : String = ""
+
+  property name : String = ""
+
+  def initialize(@id = 0, @name = "", @internal = "")
+  end
+end
+```
+
+Hashes and named tuples serialize as key-value groups:
+
+```crystal
+{"host" => "localhost", "port" => "5432"}.to_c0("database")
+{host: "localhost", port: "5432"}.to_c0("config")
 ```
 
 ### Building
 
 ```crystal
-buf = C0data::Builder.build do |b|
+buf = C0::Builder.build do |b|
   b.file("mydb") do
     b.group("users", headers: ["name", "amount", "type"]) do
       b.record("Alice", "1502.30", "DEPOSIT")
@@ -160,7 +217,7 @@ end
 ### Reading
 
 ```crystal
-doc = C0data::Document.new(buf)
+doc = C0::Document.new(buf)
 doc.name                                # => "mydb"
 doc["users"].table.record(0).field(0)   # => "Alice" (zero-copy slice)
 doc["users"].table.record(0).field(1)   # => "1502.30"
@@ -169,7 +226,7 @@ doc["users"].table.record(0).field(1)   # => "1502.30"
 ### Pretty-Printing
 
 ```crystal
-puts C0data::Pretty.format(buf)
+puts C0::Pretty.format(buf)
 # ␜mydb
 #   ␝users
 #     ␁name␟amount␟type
@@ -181,8 +238,8 @@ puts C0data::Pretty.format(buf)
 ### Round-Trip
 
 ```crystal
-pretty = C0data::Pretty.format(buf)
-compact = C0data::Pretty.parse(pretty)
+pretty = C0::Pretty.format(buf)
+compact = C0::Pretty.parse(pretty)
 # compact is identical to the original buf
 ```
 
@@ -190,26 +247,26 @@ compact = C0data::Pretty.parse(pretty)
 
 ```crystal
 # CSV → C0DATA
-buf = C0data::CSV.from_csv(csv_string, group_name: "users")
+buf = C0::CSV.from_csv(csv_string, group_name: "users")
 
 # C0DATA → CSV
-csv = C0data::CSV.to_csv(buf)
+csv = C0::CSV.to_csv(buf)
 ```
 
 ### JSON/YAML Conversion
 
 ```crystal
 # JSON → C0DATA
-buf = C0data::JSON.from_json(json_string)
+buf = C0::JSON.from_json(json_string)
 
 # YAML → C0DATA
-buf = C0data::JSON.from_yaml(yaml_string, group_name: "config")
+buf = C0::JSON.from_yaml(yaml_string, group_name: "config")
 
 # C0DATA → JSON
-json = C0data::JSON.to_json(buf)
+json = C0::JSON.to_json(buf)
 
 # C0DATA → YAML
-yaml = C0data::JSON.to_yaml(buf)
+yaml = C0::JSON.to_yaml(buf)
 ```
 
 Tables become arrays of objects, key-value groups become flat objects.
@@ -218,7 +275,7 @@ Nested JSON/YAML structures are preserved using STX/ETX scoping.
 ### C0DIFF
 
 ```crystal
-diff = C0data::Diff.build do |b|
+diff = C0::Diff.build do |b|
   b.file("src/app.cr") do
     b.section do |s|
       s.anchor("class App\n  def ")
@@ -228,7 +285,7 @@ diff = C0data::Diff.build do |b|
 end
 
 files = {"src/app.cr" => source_code}
-result = C0data::Diff.apply(diff, files)
+result = C0::Diff.apply(diff, files)
 ```
 
 ## Two Forms
@@ -354,7 +411,7 @@ questions and future directions.
 ## Development
 
 ```
-crystal spec        # run tests (105 specs)
+crystal spec        # run tests
 crystal build bench/bench_tokenizer.cr -o bench/bench_tokenizer --release
 ./bench/bench_tokenizer 10   # benchmark with 10 MB document
 ```

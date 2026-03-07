@@ -1,4 +1,4 @@
-# C0DATA project tasks
+# C0 project tasks
 
 # Build c0fmt CLI tool
 build:
