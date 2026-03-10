@@ -1,0 +1,49 @@
+␜ mydb
+  ␝ users
+    ␁ name  ␟ amount  ␟ type
+    ␞ Alice ␟ 1502.30 ␟ DEPOSIT
+    ␞ Bob   ␟ 340.00  ␟ WITHDRAWAL
+  ␝ products
+    ␁ id ␟ product ␟ qty
+    ␞ 01 ␟ Widget  ␟ 100
+    ␞ 02 ␟ Gadget  ␟ 250
+␄
+
+␝ database
+  ␞ host ␟ localhost
+  ␞ port ␟ 5432
+␝ server
+  ␞ host ␟ 0.0.0.0
+  ␞ port ␟ 8080
+
+␜ My Document
+  ␝ Chapter 1
+    ␞ First paragraph.
+    ␞ A list:
+      ␟ Item one
+      ␟ Item two
+    ␝␝ Section 1.1
+      ␞ Nested content.
+  ␝ Chapter 2
+    ␞ And so on.
+
+␝ quoted-example
+  ␞ ␂  leading spaces  ␃ ␟ normal value
+
+␝ escaped
+  ␞ literal control␐␟in value
+
+␜ foo.txt
+  ␝ Hello ␟world␚universe␟!
+
+␜ schemas
+  ␝␁ user
+    ␝ name
+      ␞ type ␟ s
+      ␞ req  ␟ true
+    ␝ age
+      ␞ type ␟ i
+      ␞ min  ␟ 0
+    ␝ address
+      ␞ type ␟ ␅address
+      ␞ req  ␟ true
