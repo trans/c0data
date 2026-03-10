@@ -336,6 +336,90 @@ function formatCompact(document: vscode.TextDocument): vscode.TextEdit[] {
   return edits;
 }
 
+// --- Input method: \gs expansion ---
+
+// Backslash code names → Control Pictures
+const BACKSLASH_CODES: Record<string, string> = {
+  fs:  "\u241C",
+  gs:  "\u241D",
+  rs:  "\u241E",
+  us:  "\u241F",
+  soh: "\u2401",
+  stx: "\u2402",
+  etx: "\u2403",
+  eot: "\u2404",
+  enq: "\u2405",
+  dle: "\u2410",
+  sub: "\u241A",
+};
+
+// Sorted longest-first so we match "stx" before "s"
+const CODE_NAMES_PATTERN = Object.keys(BACKSLASH_CODES)
+  .sort((a, b) => b.length - a.length)
+  .join("|");
+
+// Matches \code at end of a region, preceded by non-backslash (or start of line)
+const EXPANSION_RE = new RegExp(`(?:^|[^\\\\])\\\\(${CODE_NAMES_PATTERN})$`);
+
+// Matches \\code (escaped — should become literal \code)
+const ESCAPE_RE = new RegExp(`\\\\\\\\(${CODE_NAMES_PATTERN})$`);
+
+/**
+ * Check for \code sequences and expand them when a trigger character
+ * (space, tab, enter, or another \) is typed.
+ */
+function handleExpansion(event: vscode.TextDocumentChangeEvent): void {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor || editor.document !== event.document) return;
+  if (event.document.languageId !== "c0data") return;
+  if (event.contentChanges.length === 0) return;
+
+  // Only act on single-character insertions (typing)
+  const change = event.contentChanges[0];
+  if (change.text.length !== 1) return;
+
+  const trigger = change.text;
+  const isTrigger = trigger === " " || trigger === "\t" || trigger === "\n" ||
+                    trigger === "\\" || trigger === "\u241C" || trigger === "\u241D" ||
+                    trigger === "\u241E" || trigger === "\u241F";
+
+  if (!isTrigger) return;
+
+  // Get text before the trigger (the line up to the insertion point)
+  const pos = change.range.start;
+  const line = event.document.lineAt(pos.line).text;
+  // Text before the just-typed trigger character
+  const before = line.slice(0, pos.character);
+
+  // Check for \\code (escaped) first
+  const escMatch = ESCAPE_RE.exec(before);
+  if (escMatch) {
+    const codeName = escMatch[1];
+    const startCol = pos.character - codeName.length - 2; // \\code
+    const range = new vscode.Range(pos.line, startCol, pos.line, pos.character);
+    // Replace \\code with \code (literal)
+    editor.edit((edit) => {
+      edit.replace(range, "\\" + codeName);
+    }, { undoStopBefore: false, undoStopAfter: true });
+    return;
+  }
+
+  // Check for \code (expansion)
+  const expMatch = EXPANSION_RE.exec(before);
+  if (expMatch) {
+    const codeName = expMatch[1];
+    const glyph = BACKSLASH_CODES[codeName];
+    if (!glyph) return;
+
+    const startCol = pos.character - codeName.length - 1; // \code
+    const range = new vscode.Range(pos.line, startCol, pos.line, pos.character);
+    // Replace \code with the glyph (trigger char stays)
+    editor.edit((edit) => {
+      edit.replace(range, glyph);
+    }, { undoStopBefore: false, undoStopAfter: true });
+  }
+}
+
 // --- Activation ---
 
 export function activate(context: vscode.ExtensionContext) {
@@ -421,6 +505,43 @@ export function activate(context: vscode.ExtensionContext) {
 
       vscode.window.showInformationMessage(`C0DATA glyphs: ${pick}`);
     })
+  );
+
+  // --- Input method ---
+
+  // \code expansion on trigger characters
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      handleExpansion(event);
+    })
+  );
+
+  // Completion provider: type \ and see all codes
+  context.subscriptions.push(
+    vscode.languages.registerCompletionItemProvider("c0data", {
+      provideCompletionItems(document, position) {
+        const lineText = document.lineAt(position.line).text;
+        const before = lineText.slice(0, position.character);
+        if (!before.endsWith("\\")) return [];
+
+        return Object.entries(BACKSLASH_CODES).map(([name, glyph]) => {
+          const item = new vscode.CompletionItem(
+            `\\${name}`,
+            vscode.CompletionItemKind.Text
+          );
+          item.detail = `${glyph} (${CODE_KEYS[CONTROL_PICTURES.indexOf(glyph)]})`;
+          item.insertText = name;
+          // Replace the \ that triggered completion + insert the code name,
+          // then the filterText matches what the user is typing
+          item.range = new vscode.Range(
+            position.line, position.character - 1,
+            position.line, position.character
+          );
+          item.insertText = glyph;
+          return item;
+        });
+      },
+    }, "\\")
   );
 
   // Keep decorations updated
