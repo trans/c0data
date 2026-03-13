@@ -1,5 +1,5 @@
 module C0
-  VERSION = "0.7.0"
+  VERSION = "0.8.0"
 
   # Assigned C0 control codes
   SOH = 0x01_u8 # Header (field name declarations)

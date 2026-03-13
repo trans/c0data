@@ -144,6 +144,89 @@ describe C0::Pretty do
     end
   end
 
+  describe ".format with modes" do
+    it "formats with spaced mode — columns aligned with spaces" do
+      buf = C0::Builder.build do |b|
+        b.group("users", headers: ["name", "age"]) do
+          b.record("Alice", "30")
+          b.record("Bob", "25")
+        end
+      end
+
+      out = C0::Pretty.format(buf, mode: C0::Pretty::FormatMode::Spaced)
+      out.should contain("␁ name  ␟ age")
+      out.should contain("␞ Alice ␟ 30")
+      out.should contain("␞ Bob   ␟ 25")
+    end
+
+    it "formats with aligned mode — columns aligned without extra spaces" do
+      buf = C0::Builder.build do |b|
+        b.group("users", headers: ["name", "age"]) do
+          b.record("Alice", "30")
+          b.record("Bob", "25")
+        end
+      end
+
+      out = C0::Pretty.format(buf, mode: C0::Pretty::FormatMode::Aligned)
+      out.should contain("␁name ␟age")
+      out.should contain("␞Alice␟30")
+      out.should contain("␞Bob  ␟25")
+    end
+
+    it "formats with compact mode — no padding" do
+      buf = C0::Builder.build do |b|
+        b.group("users", headers: ["name", "age"]) do
+          b.record("Alice", "30")
+        end
+      end
+
+      out = C0::Pretty.format(buf, mode: C0::Pretty::FormatMode::Compact)
+      out.should contain("␁name␟age")
+      out.should contain("␞Alice␟30")
+    end
+
+    it "align round-trips through parse" do
+      buf = C0::Builder.build do |b|
+        b.group("users", headers: ["name", "age"]) do
+          b.record("Alice", "30")
+          b.record("Bob", "25")
+        end
+      end
+
+      spaced = C0::Pretty.format(buf, mode: C0::Pretty::FormatMode::Spaced)
+      reparsed = C0::Pretty.parse(spaced)
+      reparsed.should eq(buf)
+    end
+
+    it "align handles mixed table and non-table lines" do
+      buf = C0::Builder.build do |b|
+        b.file("mydb") do
+          b.group("users", headers: ["name", "age"]) do
+            b.record("Alice", "30")
+          end
+          b.group("config") do
+            b.record("host", "localhost")
+          end
+        end
+      end
+
+      spaced = C0::Pretty.format(buf, mode: C0::Pretty::FormatMode::Spaced)
+      spaced.should contain("␜ mydb")
+      spaced.should contain("␝ users")
+      spaced.should contain("␞ Alice ␟ 30")
+    end
+  end
+
+  describe ".align" do
+    it "standalone function works on pretty strings" do
+      pretty = "␝users\n  ␁name␟age\n  ␞Alice␟30\n  ␞Bob␟25\n"
+      spaced = C0::Pretty.align(pretty, C0::Pretty::FormatMode::Spaced)
+      spaced.should contain("␁ name  ␟ age")
+      spaced.should contain("␞ Alice ␟ 30")
+      spaced.should contain("␞ Bob   ␟ 25")
+    end
+  end
+
   describe "glyph mapping" do
     it "maps all assigned codes to correct Unicode Control Pictures" do
       C0::Pretty.glyph(C0::SOH).should eq('␁')
